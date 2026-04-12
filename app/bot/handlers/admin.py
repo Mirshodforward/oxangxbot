@@ -557,7 +557,7 @@ Endi xabar turini tanlang va xabar yuboring.
 
 @router.callback_query(F.data == "broadcast:confirm")
 async def broadcast_confirm(callback: CallbackQuery, bot: Bot, session: AsyncSession):
-    """Confirm and start broadcast"""
+    """Confirm and start broadcast - optimized for 100k+ users"""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Ruxsat yo'q", show_alert=True)
         return
@@ -575,39 +575,60 @@ async def broadcast_confirm(callback: CallbackQuery, bot: Bot, session: AsyncSes
     user_ids = await admin_repo.get_all_user_ids(limit=limit)
     total = len(user_ids)
     
+    # Determine message type for stats
+    msg_type = data.get("type", "text")
+    msg_type_display = {
+        "text": "📝 MATN",
+        "photo": "🖼 RASM",
+        "video": "🎬 VIDEO"
+    }.get(msg_type, "📝 MATN")
+    
     # Create broadcast record
     broadcast_repo = BroadcastRepository(session)
     broadcast = await broadcast_repo.create_broadcast(
         admin_id=callback.from_user.id,
         message_text=data.get("text") or data.get("caption"),
-        photo_file_id=data.get("photo"),
+        photo_file_id=data.get("photo") or data.get("video"),
         total_users=total
     )
     
     await broadcast_repo.update_broadcast(broadcast.id, status="running")
     
+    # Statistics counters
+    sent = 0
+    failed = 0
+    blocked = 0
+    
+    # Timing
+    import time
+    start_time = time.time()
+    
+    # Calculate optimal update interval based on total users
+    update_interval = max(50, min(500, total // 100))
+    
     # Send progress message
     progress_msg = await callback.message.edit_text(
         f"📢 <b>Broadcast jarayonda...</b>\n\n"
-        f"📊 Progress: 0/{total} (0%)\n"
+        f"📋 Turi: {msg_type_display}\n"
+        f"👥 Jami: <b>{total:,}</b> ta user\n\n"
+        f"📊 Progress: 0/{total:,} (0%)\n"
         f"✅ Yuborildi: 0\n"
-        f"❌ Xato: 0",
+        f"❌ Xato: 0\n"
+        f"🚫 Bloklangan: 0\n\n"
+        f"⏱ Taxminiy vaqt: hisoblanyapti...",
         parse_mode="HTML"
     )
     
-    sent = 0
-    failed = 0
-    
     for i, user_id in enumerate(user_ids):
         try:
-            if data.get("type") == "photo":
+            if msg_type == "photo":
                 await bot.send_photo(
                     chat_id=user_id,
                     photo=data["photo"],
                     caption=data.get("html_caption") or data.get("caption"),
                     parse_mode="HTML"
                 )
-            elif data.get("type") == "video":
+            elif msg_type == "video":
                 await bot.send_video(
                     chat_id=user_id,
                     video=data["video"],
@@ -621,42 +642,88 @@ async def broadcast_confirm(callback: CallbackQuery, bot: Bot, session: AsyncSes
                     parse_mode="HTML"
                 )
             sent += 1
+            
         except Exception as e:
-            failed += 1
+            error_msg = str(e).lower()
+            # Detect blocked/deactivated users
+            if any(x in error_msg for x in ['blocked', 'deactivated', 'user is deactivated', 
+                                             'bot was blocked', 'chat not found', 'user not found',
+                                             'forbidden', 'kicked']):
+                blocked += 1
+            else:
+                failed += 1
             logger.debug(f"Broadcast failed for {user_id}: {e}")
         
-        # Update progress every 50 users
-        if (i + 1) % 50 == 0 or i == total - 1:
+        # Update progress at intervals
+        if (i + 1) % update_interval == 0 or i == total - 1:
             progress = round((i + 1) / total * 100, 1)
+            elapsed = time.time() - start_time
+            
+            # Calculate ETA
+            if i > 0:
+                rate = (i + 1) / elapsed  # users per second
+                remaining = total - (i + 1)
+                eta_seconds = remaining / rate if rate > 0 else 0
+                
+                if eta_seconds > 3600:
+                    eta_str = f"{int(eta_seconds // 3600)}s {int((eta_seconds % 3600) // 60)}d"
+                elif eta_seconds > 60:
+                    eta_str = f"{int(eta_seconds // 60)}d {int(eta_seconds % 60)}s"
+                else:
+                    eta_str = f"{int(eta_seconds)}s"
+            else:
+                eta_str = "hisoblanyapti..."
+            
             try:
                 await progress_msg.edit_text(
                     f"📢 <b>Broadcast jarayonda...</b>\n\n"
-                    f"📊 Progress: {i+1}/{total} ({progress}%)\n"
-                    f"✅ Yuborildi: {sent}\n"
-                    f"❌ Xato: {failed}",
+                    f"📋 Turi: {msg_type_display}\n"
+                    f"👥 Jami: <b>{total:,}</b> ta user\n\n"
+                    f"📊 Progress: {i+1:,}/{total:,} ({progress}%)\n"
+                    f"✅ Yuborildi: {sent:,}\n"
+                    f"❌ Xato: {failed:,}\n"
+                    f"🚫 Bloklangan: {blocked:,}\n\n"
+                    f"⏱ Qolgan vaqt: ~{eta_str}",
                     parse_mode="HTML"
                 )
             except:
                 pass
         
-        # Rate limiting
-        await asyncio.sleep(0.035)  # ~28 messages per second
+        # Adaptive rate limiting
+        # Telegram allows ~30 msg/sec, we use 25 to be safe
+        await asyncio.sleep(0.04)  # ~25 messages per second
+    
+    # Calculate final stats
+    elapsed_total = time.time() - start_time
+    if elapsed_total > 3600:
+        time_str = f"{int(elapsed_total // 3600)} soat {int((elapsed_total % 3600) // 60)} daqiqa"
+    elif elapsed_total > 60:
+        time_str = f"{int(elapsed_total // 60)} daqiqa {int(elapsed_total % 60)} soniya"
+    else:
+        time_str = f"{int(elapsed_total)} soniya"
+    
+    success_rate = round(sent / max(total, 1) * 100, 1)
     
     # Update broadcast record
     await broadcast_repo.update_broadcast(
         broadcast.id,
         sent_count=sent,
-        failed_count=failed,
+        failed_count=failed + blocked,
         status="completed"
     )
     
-    # Final result
+    # Final detailed result
     await progress_msg.edit_text(
-        f"✅ <b>Broadcast yakunlandi!</b>\n\n"
-        f"📊 Jami: {total}\n"
-        f"✅ Yuborildi: {sent}\n"
-        f"❌ Xato: {failed}\n"
-        f"📈 Muvaffaqiyat: {round(sent/max(total,1)*100, 1)}%",
+        f"✅ <b>Xabar yuborish tugallandi!</b>\n\n"
+        f"📋 <b>Yuborish turi:</b> {msg_type_display}\n"
+        f"👥 <b>Barcha foydalanuvchilar:</b> {total:,} ta\n\n"
+        f"📊 <b>Natijalar:</b>\n"
+        f"├ ✅ Muvaffaqiyatli: <b>{sent:,}</b> ta\n"
+        f"├ ❌ Muvaffaqiyatsiz: <b>{failed:,}</b> ta\n"
+        f"└ 🚫 Bloklangan: <b>{blocked:,}</b> ta\n\n"
+        f"📈 <b>Muvaffaqiyatli darajasi:</b> {success_rate}%\n"
+        f"⏱ <b>Sarflangan vaqt:</b> {time_str}\n\n"
+        f"💡 <i>Bloklangan userlar botni bloklaganlar yoki akkauntlari o'chirilganlar.</i>",
         reply_markup=get_admin_back_keyboard(),
         parse_mode="HTML"
     )

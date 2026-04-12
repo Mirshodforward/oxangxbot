@@ -93,7 +93,7 @@ class FastSaverAPI:
             self._session = aiohttp.ClientSession(
                 timeout=self.timeout,
                 headers={
-                    "User-Agent": "YuklaBot/1.0",
+                    "User-Agent": "Oxangxbot/1.0",
                     "Accept": "application/json"
                 }
             )

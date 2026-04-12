@@ -56,7 +56,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
     "welcome": {
         LANG_UZ: """👋 Salom, {name}!
 
-🤖 <b>YuklaBot</b> - ijtimoiy tarmoqlardan video va audio yuklash boti.
+🤖 <b>Oxangxbot</b> - ijtimoiy tarmoqlardan video va audio yuklash boti.
 
 📥 <b>Qo'llab-quvvatlanadigan platformalar:</b>
 • Instagram - stories, post va reels + audio
@@ -76,7 +76,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         
         LANG_UZ_CYRL: """👋 Салом, {name}!
 
-🤖 <b>YuklaBot</b> - ижтимоий тармоқлардан видео ва аудио юклаш боти.
+🤖 <b>Oxangxbot</b> - ижтимоий тармоқлардан видео ва аудио юклаш боти.
 
 📥 <b>Қўллаб-қувватланадиган платформалар:</b>
 • Instagram - stories, post ва reels + аудио
@@ -96,7 +96,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         
         LANG_RU: """👋 Привет, {name}!
 
-🤖 <b>YuklaBot</b> - бот для скачивания видео и аудио из социальных сетей.
+🤖 <b>Oxangxbot</b> - бот для скачивания видео и аудио из социальных сетей.
 
 📥 <b>Поддерживаемые платформы:</b>
 • Instagram - stories, посты и reels + аудио
@@ -116,7 +116,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         
         LANG_EN: """👋 Hello, {name}!
 
-🤖 <b>YuklaBot</b> - bot for downloading videos and audio from social networks.
+🤖 <b>Oxangxbot</b> - bot for downloading videos and audio from social networks.
 
 📥 <b>Supported platforms:</b>
 • Instagram - stories, posts and reels + audio
