@@ -58,7 +58,7 @@ class GeminiVoiceService:
             
             # Generate transcription
             response = client.models.generate_content(
-                model="gemini-1.5-pro",
+                model="gemini-1.5-flash",
                 contents=[
                     "Transcribe this audio. Return ONLY the transcribed text, nothing else. "
                     "If the audio is in Uzbek, Russian, or any other language, transcribe it as-is.",
@@ -107,7 +107,7 @@ Rules:
 Return ONLY valid JSON, no other text."""
 
             response = client.models.generate_content(
-                model="gemini-1.5-pro",
+                model="gemini-1.5-flash",
                 contents=[prompt],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json"

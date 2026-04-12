@@ -1,9 +1,15 @@
 from datetime import datetime, timedelta
 from typing import Optional
-from sqlalchemy import select, update, func
+import json
+import hashlib
+from sqlalchemy import select, update, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import User, Download, MusicRecognition, CachedMedia, Platform, MediaType, get_uzb_time, RequiredChannel, BroadcastMessage
+from app.database.models import (
+    User, Download, MusicRecognition, CachedMedia, Platform, MediaType, 
+    get_uzb_time, RequiredChannel, BroadcastMessage, MusicSearchCache, 
+    YouTubeCache, CacheStats
+)
 
 
 class UserRepository:
@@ -169,7 +175,7 @@ class CacheRepository:
         caption: Optional[str] = None,
         file_id: Optional[str] = None,
         file_id_audio: Optional[str] = None,
-        expires_hours: int = 24
+        expires_hours: int = 240  # 10 kun
     ) -> CachedMedia:
         """Create or update cached media"""
         from datetime import timedelta
@@ -212,6 +218,278 @@ class CacheRepository:
             .values(**{field.key: file_id})
         )
         await self.session.commit()
+    
+    async def increment_hit(self, url_hash: str) -> None:
+        """Increment cache hit counter"""
+        await self.session.execute(
+            update(CachedMedia)
+            .where(CachedMedia.url_hash == url_hash)
+            .values(hit_count=CachedMedia.hit_count + 1)
+        )
+        await self.session.commit()
+    
+    async def get_total_hits(self) -> int:
+        """Get total cache hits across all media"""
+        result = await self.session.execute(
+            select(func.sum(CachedMedia.hit_count))
+        )
+        return result.scalar() or 0
+    
+    async def get_total_points_saved(self) -> int:
+        """Calculate total points saved from cache hits"""
+        result = await self.session.execute(
+            select(func.sum(CachedMedia.hit_count * CachedMedia.points_cost))
+        )
+        return result.scalar() or 0
+
+
+class MusicSearchCacheRepository:
+    """Repository for music search cache - saves 1 point per hit"""
+    
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    @staticmethod
+    def get_query_hash(query: str, page: int = 1) -> str:
+        """Generate hash for search query"""
+        key = f"{query.lower().strip()}:{page}"
+        return hashlib.sha256(key.encode()).hexdigest()[:32]
+    
+    async def get_cached_results(self, query: str, page: int = 1) -> Optional[list[dict]]:
+        """Get cached search results if available"""
+        query_hash = self.get_query_hash(query, page)
+        
+        result = await self.session.execute(
+            select(MusicSearchCache).where(
+                MusicSearchCache.query_hash == query_hash,
+                MusicSearchCache.expires_at > datetime.utcnow()
+            )
+        )
+        cached = result.scalar_one_or_none()
+        
+        if cached:
+            # Increment hit counter
+            cached.hit_count += 1
+            await self.session.commit()
+            return json.loads(cached.results_json)
+        
+        return None
+    
+    async def cache_results(
+        self, 
+        query: str, 
+        page: int, 
+        results: list[dict],
+        expires_hours: int = 240  # 10 kun
+    ) -> MusicSearchCache:
+        """Cache search results"""
+        query_hash = self.get_query_hash(query, page)
+        
+        # Check if exists
+        existing = await self.session.execute(
+            select(MusicSearchCache).where(MusicSearchCache.query_hash == query_hash)
+        )
+        cached = existing.scalar_one_or_none()
+        
+        if cached:
+            cached.results_json = json.dumps(results, ensure_ascii=False)
+            cached.results_count = len(results)
+            cached.expires_at = datetime.utcnow() + timedelta(hours=expires_hours)
+            await self.session.commit()
+            return cached
+        
+        # Create new
+        cached = MusicSearchCache(
+            query_hash=query_hash,
+            query=query[:255],
+            page=page,
+            results_json=json.dumps(results, ensure_ascii=False),
+            results_count=len(results),
+            expires_at=datetime.utcnow() + timedelta(hours=expires_hours)
+        )
+        self.session.add(cached)
+        await self.session.commit()
+        await self.session.refresh(cached)
+        return cached
+    
+    async def get_total_hits(self) -> int:
+        """Get total search cache hits"""
+        result = await self.session.execute(
+            select(func.sum(MusicSearchCache.hit_count))
+        )
+        return result.scalar() or 0
+
+
+class YouTubeCacheRepository:
+    """Repository for YouTube cache - saves 20 POINTS per hit!"""
+    
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def get_cached(self, video_id: str, format: str) -> Optional[YouTubeCache]:
+        """Get cached YouTube download"""
+        result = await self.session.execute(
+            select(YouTubeCache).where(
+                YouTubeCache.video_id == video_id,
+                YouTubeCache.format == format,
+                YouTubeCache.expires_at > datetime.utcnow()
+            )
+        )
+        cached = result.scalar_one_or_none()
+        
+        if cached:
+            cached.hit_count += 1
+            await self.session.commit()
+        
+        return cached
+    
+    async def cache_download(
+        self,
+        video_id: str,
+        format: str,
+        file_id: str,
+        media_type: str,
+        title: Optional[str] = None,
+        duration: Optional[str] = None,
+        expires_hours: int = 240  # 10 kun
+    ) -> YouTubeCache:
+        """Cache YouTube download"""
+        # Check if exists
+        existing = await self.session.execute(
+            select(YouTubeCache).where(
+                YouTubeCache.video_id == video_id,
+                YouTubeCache.format == format
+            )
+        )
+        cached = existing.scalar_one_or_none()
+        
+        if cached:
+            cached.file_id = file_id
+            cached.expires_at = datetime.utcnow() + timedelta(hours=expires_hours)
+            await self.session.commit()
+            return cached
+        
+        # Create new
+        cached = YouTubeCache(
+            video_id=video_id,
+            format=format,
+            file_id=file_id,
+            media_type=media_type,
+            title=title,
+            duration=duration,
+            expires_at=datetime.utcnow() + timedelta(hours=expires_hours)
+        )
+        self.session.add(cached)
+        await self.session.commit()
+        await self.session.refresh(cached)
+        return cached
+    
+    async def get_total_hits(self) -> int:
+        """Get total YouTube cache hits"""
+        result = await self.session.execute(
+            select(func.sum(YouTubeCache.hit_count))
+        )
+        return result.scalar() or 0
+    
+    async def get_points_saved(self) -> int:
+        """Get total points saved (20 per hit)"""
+        hits = await self.get_total_hits()
+        return hits * 20
+
+
+class CacheStatsRepository:
+    """Repository for cache statistics"""
+    
+    def __init__(self, session: AsyncSession):
+        self.session = session
+    
+    async def _get_or_create_today(self) -> CacheStats:
+        """Get or create today's stats record"""
+        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        result = await self.session.execute(
+            select(CacheStats).where(CacheStats.date == today)
+        )
+        stats = result.scalar_one_or_none()
+        
+        if not stats:
+            stats = CacheStats(date=today)
+            self.session.add(stats)
+            await self.session.commit()
+            await self.session.refresh(stats)
+        
+        return stats
+    
+    async def log_api_call(self, call_type: str, points: int) -> None:
+        """Log an API call"""
+        stats = await self._get_or_create_today()
+        
+        if call_type == "media":
+            stats.api_calls_media += 1
+        elif call_type == "music":
+            stats.api_calls_music += 1
+        elif call_type == "youtube":
+            stats.api_calls_youtube += 1
+        elif call_type == "recognize":
+            stats.api_calls_recognize += 1
+        
+        stats.points_spent += points
+        await self.session.commit()
+    
+    async def log_cache_hit(self, cache_type: str, points_saved: int) -> None:
+        """Log a cache hit"""
+        stats = await self._get_or_create_today()
+        
+        if cache_type == "media":
+            stats.cache_hits_media += 1
+        elif cache_type == "music":
+            stats.cache_hits_music += 1
+        elif cache_type == "youtube":
+            stats.cache_hits_youtube += 1
+        elif cache_type == "recognize":
+            stats.cache_hits_recognize += 1
+        
+        stats.points_saved += points_saved
+        await self.session.commit()
+    
+    async def get_today_stats(self) -> CacheStats:
+        """Get today's statistics"""
+        return await self._get_or_create_today()
+    
+    async def get_total_stats(self) -> dict:
+        """Get totals across all time"""
+        result = await self.session.execute(
+            select(
+                func.sum(CacheStats.api_calls_media).label("api_media"),
+                func.sum(CacheStats.api_calls_music).label("api_music"),
+                func.sum(CacheStats.api_calls_youtube).label("api_youtube"),
+                func.sum(CacheStats.api_calls_recognize).label("api_recognize"),
+                func.sum(CacheStats.cache_hits_media).label("hits_media"),
+                func.sum(CacheStats.cache_hits_music).label("hits_music"),
+                func.sum(CacheStats.cache_hits_youtube).label("hits_youtube"),
+                func.sum(CacheStats.cache_hits_recognize).label("hits_recognize"),
+                func.sum(CacheStats.points_spent).label("spent"),
+                func.sum(CacheStats.points_saved).label("saved")
+            )
+        )
+        row = result.one()
+        
+        return {
+            "api_calls": {
+                "media": row.api_media or 0,
+                "music": row.api_music or 0,
+                "youtube": row.api_youtube or 0,
+                "recognize": row.api_recognize or 0
+            },
+            "cache_hits": {
+                "media": row.hits_media or 0,
+                "music": row.hits_music or 0,
+                "youtube": row.hits_youtube or 0,
+                "recognize": row.hits_recognize or 0
+            },
+            "points_spent": row.spent or 0,
+            "points_saved": row.saved or 0
+        }
 
 
 class MusicRepository:

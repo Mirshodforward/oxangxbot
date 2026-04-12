@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database.models import User
 from app.database.repositories import (
-    AdminRepository, ChannelRepository, BroadcastRepository, UserRepository
+    AdminRepository, ChannelRepository, BroadcastRepository, UserRepository,
+    CacheStatsRepository, YouTubeCacheRepository, MusicSearchCacheRepository, CacheRepository
 )
 from app.bot.keyboards import (
     get_admin_main_keyboard,
@@ -141,6 +142,120 @@ async def admin_stats(callback: CallbackQuery, session: AsyncSession):
 
 🎵 <b>Shazam:</b>
 └ Jami: <b>{stats['total_shazams']}</b>
+"""
+    
+    await callback.message.edit_text(text, reply_markup=get_admin_back_keyboard(), parse_mode="HTML")
+    await callback.answer()
+
+
+# ==================== CACHE STATISTICS ====================
+
+@router.message(Command("cache"))
+async def cmd_cache_stats(message: Message, session: AsyncSession):
+    """Show cache statistics - how many points saved"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    stats_repo = CacheStatsRepository(session)
+    yt_cache_repo = YouTubeCacheRepository(session)
+    music_cache_repo = MusicSearchCacheRepository(session)
+    cache_repo = CacheRepository(session)
+    
+    # Get all stats
+    total_stats = await stats_repo.get_total_stats()
+    today_stats = await stats_repo.get_today_stats()
+    
+    yt_hits = await yt_cache_repo.get_total_hits()
+    yt_saved = await yt_cache_repo.get_points_saved()
+    music_hits = await music_cache_repo.get_total_hits()
+    media_hits = await cache_repo.get_total_hits()
+    
+    # Calculate totals
+    total_api_calls = (
+        total_stats["api_calls"]["media"] +
+        total_stats["api_calls"]["music"] +
+        total_stats["api_calls"]["youtube"] +
+        total_stats["api_calls"]["recognize"]
+    )
+    
+    total_cache_hits = (
+        total_stats["cache_hits"]["media"] +
+        total_stats["cache_hits"]["music"] +
+        total_stats["cache_hits"]["youtube"] +
+        total_stats["cache_hits"]["recognize"]
+    )
+    
+    efficiency = 0
+    if total_api_calls + total_cache_hits > 0:
+        efficiency = (total_cache_hits / (total_api_calls + total_cache_hits)) * 100
+    
+    text = f"""💾 <b>Kesh Statistikasi</b>
+
+📊 <b>Bugungi natijalar:</b>
+├ API so'rovlar: <b>{today_stats.api_calls_media + today_stats.api_calls_music + today_stats.api_calls_youtube}</b>
+├ Kesh hitlar: <b>{today_stats.cache_hits_media + today_stats.cache_hits_music + today_stats.cache_hits_youtube}</b>
+├ Sarflangan: <b>{today_stats.points_spent}</b> point
+└ Tejalgan: <b>{today_stats.points_saved}</b> point ✅
+
+📈 <b>Jami statistika:</b>
+├ API so'rovlar: <b>{total_api_calls}</b>
+├ Kesh hitlar: <b>{total_cache_hits}</b>
+├ Sarflangan: <b>{total_stats['points_spent']}</b> points
+├ Tejalgan: <b>{total_stats['points_saved']}</b> points 💰
+└ Effektivlik: <b>{efficiency:.1f}%</b>
+
+🎬 <b>YouTube keshi:</b> (20 point/hit)
+├ Kesh hitlar: <b>{yt_hits}</b>
+└ Tejalgan: <b>{yt_saved}</b> points 🔥
+
+🎵 <b>Musiqa qidiruvi:</b> (1 point/hit)
+└ Kesh hitlar: <b>{music_hits}</b>
+
+📱 <b>Media (IG/TT/etc):</b> (1 point/hit)
+└ Kesh hitlar: <b>{media_hits}</b>
+
+💡 <i>Kesh tizimi har bir takroriy so'rovda API pointlarni tejaydi!</i>
+"""
+    
+    await message.answer(text, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "admin:cache")
+async def admin_cache_stats(callback: CallbackQuery, session: AsyncSession):
+    """Show cache statistics via callback"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        return
+    
+    stats_repo = CacheStatsRepository(session)
+    yt_cache_repo = YouTubeCacheRepository(session)
+    
+    total_stats = await stats_repo.get_total_stats()
+    today_stats = await stats_repo.get_today_stats()
+    yt_saved = await yt_cache_repo.get_points_saved()
+    
+    total_saved = total_stats['points_saved']
+    total_spent = total_stats['points_spent']
+    
+    efficiency = 0
+    if total_saved + total_spent > 0:
+        efficiency = (total_saved / (total_saved + total_spent)) * 100
+    
+    text = f"""💾 <b>Kesh Statistikasi</b>
+
+📊 <b>Bugun:</b>
+├ Sarflangan: <b>{today_stats.points_spent}</b> pt
+└ Tejalgan: <b>{today_stats.points_saved}</b> pt ✅
+
+📈 <b>Jami:</b>
+├ Sarflangan: <b>{total_spent}</b> points
+├ Tejalgan: <b>{total_saved}</b> points 💰
+└ Effektivlik: <b>{efficiency:.1f}%</b>
+
+🎬 <b>YouTube:</b>
+└ Tejalgan: <b>{yt_saved}</b> points 🔥
+
+💡 <i>Kesh avtomatik ishlaydi!</i>
 """
     
     await callback.message.edit_text(text, reply_markup=get_admin_back_keyboard(), parse_mode="HTML")

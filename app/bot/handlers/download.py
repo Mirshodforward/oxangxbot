@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.fastsaver_api import api, MediaInfo
 from app.database.models import User, Platform, MediaType
-from app.database.repositories import DownloadRepository, CacheRepository, UserRepository
+from app.database.repositories import (
+    DownloadRepository, CacheRepository, UserRepository,
+    YouTubeCacheRepository, CacheStatsRepository
+)
 from app.bot.locales import get_text, normalize_language_code
 from app.bot.keyboards import get_youtube_quality_keyboard, get_main_menu_keyboard, get_download_keyboard
 from app.utils.helpers import (
@@ -283,7 +286,7 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
 
 @router.callback_query(F.data.startswith("yt_dl:"))
 async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: AsyncSession, db_user: User):
-    """Handle YouTube download with quality selection"""
+    """Handle YouTube download with quality selection - with caching (saves 20 points!)"""
     await callback.answer()
     
     # Parse callback data: yt_dl:video_id:format
@@ -294,6 +297,55 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
     
     _, video_id, format_quality = parts
     
+    # Initialize repositories
+    yt_cache_repo = YouTubeCacheRepository(session)
+    stats_repo = CacheStatsRepository(session)
+    download_repo = DownloadRepository(session)
+    user_repo = UserRepository(session)
+    
+    # 🚀 CHECK CACHE FIRST - saves 20 points!
+    cached = await yt_cache_repo.get_cached(video_id, format_quality)
+    
+    if cached:
+        # CACHE HIT! Send from cache
+        try:
+            if cached.media_type == "video":
+                await callback.message.answer_video(
+                    video=cached.file_id,
+                    caption=f"▶️ <b>YouTube</b> | {format_quality}\n⚡ <i>Keshdan yuklandi</i>",
+                    parse_mode="HTML"
+                )
+            else:
+                await callback.message.answer_audio(
+                    audio=cached.file_id,
+                    caption=f"🎵 <b>YouTube</b> | MP3\n⚡ <i>Keshdan yuklandi</i>",
+                    parse_mode="HTML"
+                )
+            
+            await callback.message.delete()
+            
+            # Log cache hit - we saved 20 points!
+            await stats_repo.log_cache_hit("youtube", 20)
+            
+            await download_repo.create(
+                user_id=db_user.id,
+                url=f"https://youtube.com/watch?v={video_id}",
+                platform=Platform.YOUTUBE,
+                shortcode=video_id,
+                media_type=MediaType.VIDEO if cached.media_type == "video" else MediaType.AUDIO,
+                file_id=cached.file_id,
+                is_success=True
+            )
+            await user_repo.increment_downloads(db_user.id)
+            
+            logger.info(f"YouTube cache hit! video_id={video_id}, format={format_quality}, 20 points saved!")
+            return
+            
+        except Exception as e:
+            logger.warning(f"Cached file_id expired or invalid: {e}")
+            # Continue to API call if cache failed
+    
+    # CACHE MISS - need to call API (costs 20 points)
     await callback.message.edit_text(f"⏳ YouTube {format_quality} formatda yuklanmoqda...")
     
     try:
@@ -301,16 +353,19 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
         bot_info = await bot.get_me()
         bot_username = f"@{bot_info.username}"
         
-        # Download from API
+        # Download from API - costs 20 points
         result = await api.download_youtube(
             video_id=video_id,
             format=format_quality,
             bot_username=bot_username
         )
         
+        # Log API call
+        await stats_repo.log_api_call("youtube", 20)
+        
         if result.error:
             await callback.message.edit_text(
-                f"❌ Xatolik: {result.error_message or 'Yuklab bo\'lmadi'}"
+                f"❌ Xatolik: {result.error_message or 'Yuklab bolmadi'}"
             )
             return
         
@@ -332,9 +387,15 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
                 
                 await callback.message.delete()
                 
-                # Log download
-                download_repo = DownloadRepository(session)
-                user_repo = UserRepository(session)
+                # 💾 CACHE THE RESULT for future requests!
+                await yt_cache_repo.cache_download(
+                    video_id=video_id,
+                    format=format_quality,
+                    file_id=result.file_id,
+                    media_type=result.media_type,
+                    expires_hours=240  # Cache for 10 days
+                )
+                logger.info(f"YouTube cached: video_id={video_id}, format={format_quality}")
                 
                 await download_repo.create(
                     user_id=db_user.id,

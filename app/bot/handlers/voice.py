@@ -1,6 +1,7 @@
 """
 Voice command handler
 Converts voice messages to text and searches music
+Uses Faster-Whisper (local) - no API keys required
 """
 import logging
 import tempfile
@@ -11,7 +12,7 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.gemini_voice import get_gemini_voice_service
+from app.services.whisper_voice import get_whisper_voice_service
 from app.services.fastsaver_api import api
 from app.database.models import User
 from app.bot.keyboards import get_main_menu_keyboard, get_music_results_keyboard
@@ -34,15 +35,15 @@ async def handle_voice_command(
     
     Flow:
     1. User sends voice message (e.g., "Ummon guruhining qo'shiqlarini top")
-    2. Bot transcribes using Gemini
+    2. Bot transcribes using local Whisper model
     3. Extracts intent/query (artist: "Ummon")
     4. Searches music and returns results
     """
     lang = normalize_language_code(db_user.language_code)
     
-    # Check if Gemini is available
-    gemini = get_gemini_voice_service()
-    if not gemini:
+    # Check if Whisper is available
+    whisper = get_whisper_voice_service()
+    if not whisper:
         await message.answer(
             get_text("voice_disabled", lang),
             reply_markup=get_main_menu_keyboard(lang)
@@ -67,8 +68,8 @@ async def handle_voice_command(
             # Download to temp file
             await bot.download_file(file.file_path, tmp_path)
             
-            # Process voice message
-            command = await gemini.process_voice_message(tmp_path)
+            # Process voice message with local Whisper
+            command = await whisper.process_voice_message(tmp_path)
             
             if not command:
                 await status_msg.delete()

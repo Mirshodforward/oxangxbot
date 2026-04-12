@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.fastsaver_api import api
 from app.database.models import User
-from app.database.repositories import MusicRepository
+from app.database.repositories import MusicRepository, MusicSearchCacheRepository, CacheStatsRepository
 from app.bot.keyboards import (
     get_main_menu_keyboard,
     get_cancel_keyboard,
@@ -161,7 +161,7 @@ async def _recognize_from_file(
 # ==================== MUSIC SEARCH ====================
 
 @router.message(Command("search", "s"))
-async def cmd_search(message: Message, command: CommandObject, state: FSMContext, db_user: User):
+async def cmd_search(message: Message, command: CommandObject, state: FSMContext, session: AsyncSession, db_user: User):
     """Search music - /search <query> or /s <query>"""
     lang = normalize_language_code(db_user.language_code)
     
@@ -177,7 +177,7 @@ async def cmd_search(message: Message, command: CommandObject, state: FSMContext
     
     # Query provided, search directly
     query = command.args.strip()
-    await _search_music(message, query, db_user, page=1)
+    await _search_music(message, query, session, db_user, page=1)
 
 
 @router.message(F.text.in_({get_text("btn_search_music", LANG_UZ),
@@ -197,7 +197,7 @@ async def btn_search_music(message: Message, state: FSMContext, db_user: User):
 
 
 @router.message(MusicStates.waiting_for_search_query, F.text)
-async def process_search_query(message: Message, state: FSMContext, db_user: User):
+async def process_search_query(message: Message, state: FSMContext, session: AsyncSession, db_user: User):
     """Process music search query from state"""
     # Check for cancel buttons
     cancel_texts = {
@@ -213,11 +213,11 @@ async def process_search_query(message: Message, state: FSMContext, db_user: Use
     await state.clear()
     
     query = message.text.strip()
-    await _search_music(message, query, db_user, page=1)
+    await _search_music(message, query, session, db_user, page=1)
 
 
-async def _search_music(message: Message, query: str, db_user: User, page: int = 1):
-    """Common function to search music"""
+async def _search_music(message: Message, query: str, session: AsyncSession, db_user: User, page: int = 1):
+    """Common function to search music - WITH CACHING"""
     lang = normalize_language_code(db_user.language_code)
     
     if len(query) < 2:
@@ -227,16 +227,54 @@ async def _search_music(message: Message, query: str, db_user: User, page: int =
         )
         return
     
+    # Initialize repositories
+    cache_repo = MusicSearchCacheRepository(session)
+    stats_repo = CacheStatsRepository(session)
+    
     status_msg = await message.answer(
         get_text("downloading", lang)
     )
     
     try:
+        # 🚀 CHECK CACHE FIRST - saves 1 point per hit
+        cached_results = await cache_repo.get_cached_results(query, page)
+        
+        if cached_results:
+            # CACHE HIT!
+            await stats_repo.log_cache_hit("music", 1)
+            logger.info(f"Music search cache hit: query='{query}', page={page}")
+            
+            keyboard = get_music_results_keyboard(cached_results, page=page, query=query)
+            text = f"""🔍 <b>{get_text("search_results", lang)}</b> "{query}"
+
+📄 Page: {page}
+⚡ <i>Keshdan yuklandi</i>
+"""
+            await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            return
+        
+        # CACHE MISS - call API (costs 1 point)
         success, results, error = await api.search_music(query, page=page)
+        
+        # Log API call
+        await stats_repo.log_api_call("music", 1)
         
         if not success or not results:
             await status_msg.edit_text(get_text("search_no_results", lang))
             return
+        
+        # 💾 CACHE THE RESULTS
+        results_for_cache = [
+            {
+                "title": r.title,
+                "shortcode": r.shortcode,
+                "duration": r.duration,
+                "thumb": r.thumb,
+                "thumb_best": r.thumb_best
+            }
+            for r in results
+        ]
+        await cache_repo.cache_results(query, page, results_for_cache)  # 10 kun default
         
         keyboard = get_music_results_keyboard(results, page=page, query=query)
         
@@ -252,8 +290,8 @@ async def _search_music(message: Message, query: str, db_user: User, page: int =
 
 
 @router.callback_query(F.data.startswith("music_page:"))
-async def music_search_pagination(callback: CallbackQuery, db_user: User):
-    """Handle music search pagination"""
+async def music_search_pagination(callback: CallbackQuery, session: AsyncSession, db_user: User):
+    """Handle music search pagination - WITH CACHING"""
     await callback.answer()
     lang = normalize_language_code(db_user.language_code)
     
@@ -265,12 +303,47 @@ async def music_search_pagination(callback: CallbackQuery, db_user: User):
     _, page_str, query = parts
     page = int(page_str)
     
+    # Initialize repositories
+    cache_repo = MusicSearchCacheRepository(session)
+    stats_repo = CacheStatsRepository(session)
+    
     try:
+        # 🚀 CHECK CACHE FIRST
+        cached_results = await cache_repo.get_cached_results(query, page)
+        
+        if cached_results:
+            # CACHE HIT!
+            await stats_repo.log_cache_hit("music", 1)
+            
+            keyboard = get_music_results_keyboard(cached_results, page=page, query=query)
+            text = f"""🔍 <b>{get_text("search_results", lang)}</b> "{query}"
+
+📄 Page: {page}
+⚡ <i>Keshdan</i>
+"""
+            await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+            return
+        
+        # CACHE MISS - call API
         success, results, error = await api.search_music(query, page=page)
+        await stats_repo.log_api_call("music", 1)
         
         if not success or not results:
             await callback.message.edit_text(get_text("search_no_results", lang))
             return
+        
+        # Cache results
+        results_for_cache = [
+            {
+                "title": r.title,
+                "shortcode": r.shortcode,
+                "duration": r.duration,
+                "thumb": r.thumb,
+                "thumb_best": r.thumb_best
+            }
+            for r in results
+        ]
+        await cache_repo.cache_results(query, page, results_for_cache)  # 10 kun default
         
         keyboard = get_music_results_keyboard(results, page=page, query=query)
         

@@ -298,7 +298,10 @@ def get_admin_main_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="📣 Majburiy obuna", callback_data="admin:channels")
     )
     builder.row(
-        InlineKeyboardButton(text="🔄 Yangilash", callback_data="admin:refresh")
+        InlineKeyboardButton(text="� Kesh statistikasi", callback_data="admin:cache")
+    )
+    builder.row(
+        InlineKeyboardButton(text="�🔄 Yangilash", callback_data="admin:refresh")
     )
     
     return builder.as_markup()
