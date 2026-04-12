@@ -313,7 +313,7 @@ def get_broadcast_keyboard() -> InlineKeyboardMarkup:
     
     builder.row(
         InlineKeyboardButton(text="📝 Matn yuborish", callback_data="broadcast:text"),
-        InlineKeyboardButton(text="🖼 Rasm + Matn", callback_data="broadcast:photo")
+        InlineKeyboardButton(text="🖼 Media + Matn", callback_data="broadcast:photo")
     )
     builder.row(
         InlineKeyboardButton(text="👥 Hammaga", callback_data="broadcast:all"),

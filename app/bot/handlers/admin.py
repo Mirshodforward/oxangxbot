@@ -7,10 +7,11 @@ from typing import Optional
 
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
-from aiogram.enums import ChatMemberStatus
+from aiogram.enums import ChatMemberStatus, ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.utils.text_decorations import html_decoration
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -41,6 +42,22 @@ class AdminStates(StatesGroup):
     waiting_broadcast_photo = State()
     waiting_broadcast_count = State()
     waiting_channel_username = State()
+
+
+def get_html_caption(message: Message) -> str:
+    """
+    Convert message caption with entities to HTML format.
+    Works for photo, video, document, audio, voice messages.
+    """
+    if not message.caption:
+        return ""
+    
+    if not message.caption_entities:
+        # No formatting, just escape HTML
+        return html_decoration.quote(message.caption)
+    
+    # Apply entities to get HTML
+    return html_decoration.unparse(message.caption, message.caption_entities)
 
 
 def is_admin(user_id: int) -> bool:
@@ -343,11 +360,13 @@ async def admin_broadcast(callback: CallbackQuery):
 
 Xabar turini tanlang:
 • 📝 <b>Matn</b> - faqat matn xabari
-• 🖼 <b>Rasm + Matn</b> - rasm va caption
+• 🖼 <b>Media + Matn</b> - rasm yoki video + caption
 
 Yuborish usulini tanlang:
 • 👥 <b>Hammaga</b> - barcha userlarga
 • 🔢 <b>N ta userga</b> - belgilangan songa
+
+💡 <i>HTML formatlash qo'llab-quvvatlanadi</i>
 """
     
     await callback.message.edit_text(text, reply_markup=get_broadcast_keyboard(), parse_mode="HTML")
@@ -374,7 +393,7 @@ async def broadcast_text_start(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "broadcast:photo")
 async def broadcast_photo_start(callback: CallbackQuery, state: FSMContext):
-    """Start photo broadcast"""
+    """Start photo/video broadcast"""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Ruxsat yo'q", show_alert=True)
         return
@@ -383,7 +402,9 @@ async def broadcast_photo_start(callback: CallbackQuery, state: FSMContext):
     broadcast_data[callback.from_user.id] = {"type": "photo"}
     
     await callback.message.edit_text(
-        "🖼 <b>Rasm + Caption yuboring</b>\n\nRasm yuboring, caption qo'shing.",
+        "🖼 <b>Media + Caption yuboring</b>\n\n"
+        "📷 Rasm yoki 🎬 Video yuboring.\n"
+        "Caption qo'shishingiz mumkin (HTML qo'llaniladi).",
         reply_markup=get_admin_back_keyboard(),
         parse_mode="HTML"
     )
@@ -423,7 +444,7 @@ async def receive_broadcast_photo(message: Message, state: FSMContext, session: 
     
     broadcast_data[message.from_user.id]["photo"] = message.photo[-1].file_id
     broadcast_data[message.from_user.id]["caption"] = message.caption or ""
-    broadcast_data[message.from_user.id]["html_caption"] = message.html_text or ""
+    broadcast_data[message.from_user.id]["html_caption"] = get_html_caption(message)
     
     admin_repo = AdminRepository(session)
     user_count = len(await admin_repo.get_all_user_ids())
@@ -433,6 +454,33 @@ async def receive_broadcast_photo(message: Message, state: FSMContext, session: 
     text = f"""📢 <b>Broadcast tasdiqlash</b>
 
 🖼 <b>Rasm yuklandi</b>
+📝 <b>Caption:</b> {message.caption[:200] if message.caption else 'Yo\'q'}
+
+👥 Yuboriladi: <b>{user_count}</b> ta userga
+"""
+    
+    await message.answer(text, reply_markup=get_broadcast_confirm_keyboard(user_count), parse_mode="HTML")
+
+
+@router.message(AdminStates.waiting_broadcast_photo, F.video)
+async def receive_broadcast_video(message: Message, state: FSMContext, session: AsyncSession):
+    """Receive broadcast video"""
+    if not is_admin(message.from_user.id):
+        return
+    
+    broadcast_data[message.from_user.id]["type"] = "video"
+    broadcast_data[message.from_user.id]["video"] = message.video.file_id
+    broadcast_data[message.from_user.id]["caption"] = message.caption or ""
+    broadcast_data[message.from_user.id]["html_caption"] = get_html_caption(message)
+    
+    admin_repo = AdminRepository(session)
+    user_count = len(await admin_repo.get_all_user_ids())
+    
+    await state.clear()
+    
+    text = f"""📢 <b>Broadcast tasdiqlash</b>
+
+🎬 <b>Video yuklandi</b>
 📝 <b>Caption:</b> {message.caption[:200] if message.caption else 'Yo\'q'}
 
 👥 Yuboriladi: <b>{user_count}</b> ta userga
@@ -556,6 +604,13 @@ async def broadcast_confirm(callback: CallbackQuery, bot: Bot, session: AsyncSes
                 await bot.send_photo(
                     chat_id=user_id,
                     photo=data["photo"],
+                    caption=data.get("html_caption") or data.get("caption"),
+                    parse_mode="HTML"
+                )
+            elif data.get("type") == "video":
+                await bot.send_video(
+                    chat_id=user_id,
+                    video=data["video"],
                     caption=data.get("html_caption") or data.get("caption"),
                     parse_mode="HTML"
                 )

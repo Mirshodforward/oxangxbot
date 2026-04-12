@@ -40,6 +40,12 @@ def get_language_selection_message() -> str:
 async def cmd_start(message: Message, db_user: User, is_new_user: bool, session: AsyncSession):
     """Handle /start command"""
     
+    # 1. Update user explicitly on every start
+    db_user.username = message.from_user.username
+    from app.database.models import get_uzb_time
+    db_user.updated_at = get_uzb_time()
+    await session.commit()
+    
     # Check if admin
     if is_admin(message.from_user.id):
         # Get stats for admin welcome
@@ -63,23 +69,12 @@ Quyidagi tugmalardan foydalanib botni boshqaring:
         )
         return
     
-    if is_new_user:
-        # Show language selection for new users
-        await message.answer(
-            get_language_selection_message(),
-            reply_markup=get_language_selection_keyboard(),
-            parse_mode="HTML"
-        )
-    else:
-        # Show welcome message with user's saved language
-        lang = normalize_language_code(db_user.language_code)
-        welcome_text = get_text("welcome", lang, name=message.from_user.first_name)
-        
-        await message.answer(
-            welcome_text,
-            reply_markup=get_main_menu_keyboard(lang),
-            parse_mode="HTML"
-        )
+    # 2. Always ask for language on /start to update their profile fully
+    await message.answer(
+        get_language_selection_message(),
+        reply_markup=get_language_selection_keyboard(),
+        parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data.startswith("set_lang:"))
