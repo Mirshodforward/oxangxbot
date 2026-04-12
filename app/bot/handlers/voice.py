@@ -71,7 +71,8 @@ async def handle_voice_command(
             command = await gemini.process_voice_message(tmp_path)
             
             if not command:
-                await status_msg.edit_text(
+                await status_msg.delete()
+                await message.answer(
                     get_text("voice_not_recognized", lang),
                     reply_markup=get_main_menu_keyboard(lang)
                 )
@@ -116,7 +117,8 @@ async def handle_voice_command(
                 
     except Exception as e:
         logger.error(f"Voice command error: {e}")
-        await status_msg.edit_text(
+        await status_msg.delete()
+        await message.answer(
             get_text("error", lang),
             reply_markup=get_main_menu_keyboard(lang)
         )

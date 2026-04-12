@@ -1155,3 +1155,289 @@ AttributeError: 'function' object has no attribute 'ADMIN_IDS'
 2026-04-12 15:28:23,820 - __main__ - INFO - Cleanup complete
 2026-04-12 15:28:24,078 - aiogram.dispatcher - INFO - Polling stopped for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
 2026-04-12 15:28:24,082 - __main__ - INFO - Bot stopped by user
+2026-04-12 15:33:45,468 - __main__ - INFO - Starting polling...
+2026-04-12 15:33:45,469 - __main__ - INFO - Bot starting up...
+2026-04-12 15:33:45,574 - __main__ - INFO - Database initialized
+2026-04-12 15:33:46,468 - __main__ - INFO - Bot: @starspaymee_kinobot (8443009413)
+2026-04-12 15:33:50,817 - __main__ - INFO - API Points: 54
+2026-04-12 15:33:51,728 - __main__ - INFO - Bot commands menu updated
+2026-04-12 15:33:51,728 - aiogram.dispatcher - INFO - Start polling
+2026-04-12 15:33:52,048 - aiogram.dispatcher - INFO - Run polling for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:34:20,126 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files "HTTP/1.1 403 Forbidden"
+2026-04-12 15:34:20,128 - app.services.gemini_voice - ERROR - Gemini transcription error: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}
+2026-04-12 15:34:20,137 - app.bot.handlers.voice - ERROR - Voice command error: 1 validation error for EditMessageText
+reply_markup
+  Input should be a valid dictionary or instance of InlineKeyboardMarkup [type=model_type, input_value=ReplyKeyboardMarkup(keybo...er=None, selective=None), input_type=ReplyKeyboardMarkup]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+2026-04-12 15:34:20,182 - aiogram.event - INFO - Update id=369235048 is not handled. Duration 5469 ms by bot id=8443009413
+2026-04-12 15:34:20,185 - aiogram.event - ERROR - Cause exception while process update id=369235048 by bot id=8443009413
+ValidationError: 1 validation error for EditMessageText
+reply_markup
+  Input should be a valid dictionary or instance of InlineKeyboardMarkup [type=model_type, input_value=ReplyKeyboardMarkup(keybo...er=None, selective=None), input_type=ReplyKeyboardMarkup]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+Traceback (most recent call last):
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\dispatcher.py", line 309, in _process_update
+    response = await self.feed_update(bot, update, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\dispatcher.py", line 158, in feed_update
+    response = await self.update.wrap_outer_middleware(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\middlewares\error.py", line 25, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\middlewares\user_context.py", line 27, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\fsm\middleware.py", line 41, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\event\telegram.py", line 121, in trigger
+    return await wrapped_inner(event, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\event\handler.py", line 43, in call
+    return await wrapped()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\dispatcher.py", line 276, in _listen_update
+    return await self.propagate_event(update_type=update_type, event=event, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 128, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 123, in _wrapped
+    return await self._propagate_event(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 156, in _propagate_event
+    response = await router.propagate_event(update_type=update_type, event=event, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 128, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 123, in _wrapped
+    return await self._propagate_event(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 148, in _propagate_event
+    response = await observer.trigger(event, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\event\telegram.py", line 121, in trigger
+    return await wrapped_inner(event, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\middlewares.py", line 94, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\middlewares.py", line 23, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\middlewares.py", line 57, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\middlewares.py", line 136, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\event\handler.py", line 43, in call
+    return await wrapped()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\handlers\voice.py", line 119, in handle_voice_command
+    await status_msg.edit_text(
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\types\message.py", line 3316, in edit_text
+    return EditMessageText(
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\pydantic\main.py", line 250, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for EditMessageText
+reply_markup
+  Input should be a valid dictionary or instance of InlineKeyboardMarkup [type=model_type, input_value=ReplyKeyboardMarkup(keybo...er=None, selective=None), input_type=ReplyKeyboardMarkup]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+2026-04-12 15:35:04,028 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files "HTTP/1.1 403 Forbidden"
+2026-04-12 15:35:04,029 - app.services.gemini_voice - ERROR - Gemini transcription error: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}
+2026-04-12 15:35:04,032 - app.bot.handlers.voice - ERROR - Voice command error: 1 validation error for EditMessageText
+reply_markup
+  Input should be a valid dictionary or instance of InlineKeyboardMarkup [type=model_type, input_value=ReplyKeyboardMarkup(keybo...er=None, selective=None), input_type=ReplyKeyboardMarkup]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+2026-04-12 15:35:04,034 - aiogram.event - INFO - Update id=369235049 is not handled. Duration 3561 ms by bot id=8443009413
+2026-04-12 15:35:04,035 - aiogram.event - ERROR - Cause exception while process update id=369235049 by bot id=8443009413
+ValidationError: 1 validation error for EditMessageText
+reply_markup
+  Input should be a valid dictionary or instance of InlineKeyboardMarkup [type=model_type, input_value=ReplyKeyboardMarkup(keybo...er=None, selective=None), input_type=ReplyKeyboardMarkup]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+Traceback (most recent call last):
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\dispatcher.py", line 309, in _process_update
+    response = await self.feed_update(bot, update, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\dispatcher.py", line 158, in feed_update
+    response = await self.update.wrap_outer_middleware(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\middlewares\error.py", line 25, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\middlewares\user_context.py", line 27, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\fsm\middleware.py", line 41, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\event\telegram.py", line 121, in trigger
+    return await wrapped_inner(event, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\event\handler.py", line 43, in call
+    return await wrapped()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\dispatcher.py", line 276, in _listen_update
+    return await self.propagate_event(update_type=update_type, event=event, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 128, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 123, in _wrapped
+    return await self._propagate_event(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 156, in _propagate_event
+    response = await router.propagate_event(update_type=update_type, event=event, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 128, in propagate_event
+    return await observer.wrap_outer_middleware(_wrapped, event=event, data=kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 123, in _wrapped
+    return await self._propagate_event(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\router.py", line 148, in _propagate_event
+    response = await observer.trigger(event, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\event\telegram.py", line 121, in trigger
+    return await wrapped_inner(event, kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\middlewares.py", line 94, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\middlewares.py", line 23, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\middlewares.py", line 57, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\middlewares.py", line 136, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\dispatcher\event\handler.py", line 43, in call
+    return await wrapped()
+           ^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\app\bot\handlers\voice.py", line 119, in handle_voice_command
+    await status_msg.edit_text(
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\aiogram\types\message.py", line 3316, in edit_text
+    return EditMessageText(
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\User\Desktop\yuklabot\.venv\Lib\site-packages\pydantic\main.py", line 250, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for EditMessageText
+reply_markup
+  Input should be a valid dictionary or instance of InlineKeyboardMarkup [type=model_type, input_value=ReplyKeyboardMarkup(keybo...er=None, selective=None), input_type=ReplyKeyboardMarkup]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+2026-04-12 15:36:01,018 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-12 15:36:01,019 - __main__ - INFO - Bot shutting down...
+2026-04-12 15:36:01,024 - __main__ - INFO - Cleanup complete
+2026-04-12 15:36:01,280 - aiogram.dispatcher - INFO - Polling stopped for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:36:01,285 - __main__ - INFO - Bot stopped by user
+2026-04-12 15:36:06,835 - __main__ - INFO - Starting polling...
+2026-04-12 15:36:06,836 - __main__ - INFO - Bot starting up...
+2026-04-12 15:36:07,050 - __main__ - INFO - Database initialized
+2026-04-12 15:36:07,758 - __main__ - INFO - Bot: @starspaymee_kinobot (8443009413)
+2026-04-12 15:36:11,446 - __main__ - INFO - API Points: 54
+2026-04-12 15:36:11,752 - __main__ - INFO - Bot commands menu updated
+2026-04-12 15:36:11,752 - aiogram.dispatcher - INFO - Start polling
+2026-04-12 15:36:12,057 - aiogram.dispatcher - INFO - Run polling for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:36:34,831 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files "HTTP/1.1 403 Forbidden"
+2026-04-12 15:36:34,833 - app.services.gemini_voice - ERROR - Gemini transcription error: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}
+2026-04-12 15:36:34,835 - app.bot.handlers.voice - ERROR - Voice command error: 1 validation error for EditMessageText
+reply_markup
+  Input should be a valid dictionary or instance of InlineKeyboardMarkup [type=model_type, input_value=ReplyKeyboardMarkup(keybo...er=None, selective=None), input_type=ReplyKeyboardMarkup]
+    For further information visit https://errors.pydantic.dev/2.12/v/model_type
+2026-04-12 15:36:35,550 - aiogram.event - INFO - Update id=369235050 is handled. Duration 5406 ms by bot id=8443009413
+2026-04-12 15:37:36,393 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-12 15:37:36,393 - __main__ - INFO - Bot shutting down...
+2026-04-12 15:37:36,398 - __main__ - INFO - Cleanup complete
+2026-04-12 15:37:36,606 - aiogram.dispatcher - INFO - Polling stopped for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:37:36,610 - __main__ - INFO - Bot stopped by user
+2026-04-12 15:37:41,395 - __main__ - INFO - Starting polling...
+2026-04-12 15:37:41,395 - __main__ - INFO - Bot starting up...
+2026-04-12 15:37:41,478 - __main__ - INFO - Database initialized
+2026-04-12 15:37:42,482 - __main__ - INFO - Bot: @starspaymee_kinobot (8443009413)
+2026-04-12 15:37:46,822 - __main__ - INFO - API Points: 54
+2026-04-12 15:37:47,189 - __main__ - INFO - Bot commands menu updated
+2026-04-12 15:37:47,190 - aiogram.dispatcher - INFO - Start polling
+2026-04-12 15:37:47,615 - aiogram.dispatcher - INFO - Run polling for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:38:14,701 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files "HTTP/1.1 403 Forbidden"
+2026-04-12 15:38:14,703 - app.services.gemini_voice - ERROR - Gemini transcription error: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}
+2026-04-12 15:38:15,207 - aiogram.event - INFO - Update id=369235051 is handled. Duration 5702 ms by bot id=8443009413
+2026-04-12 15:38:28,334 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files "HTTP/1.1 403 Forbidden"
+2026-04-12 15:38:28,338 - app.services.gemini_voice - ERROR - Gemini transcription error: 403 PERMISSION_DENIED. {'error': {'code': 403, 'message': 'Your API key was reported as leaked. Please use another API key.', 'status': 'PERMISSION_DENIED'}}
+2026-04-12 15:38:28,734 - aiogram.event - INFO - Update id=369235052 is handled. Duration 1563 ms by bot id=8443009413
+2026-04-12 15:43:39,879 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-12 15:43:39,880 - __main__ - INFO - Bot shutting down...
+2026-04-12 15:43:39,885 - __main__ - INFO - Cleanup complete
+2026-04-12 15:43:40,090 - aiogram.dispatcher - INFO - Polling stopped for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:43:40,094 - __main__ - INFO - Bot stopped by user
+2026-04-12 15:43:54,651 - __main__ - INFO - Starting polling...
+2026-04-12 15:43:54,652 - __main__ - INFO - Bot starting up...
+2026-04-12 15:43:54,738 - __main__ - INFO - Database initialized
+2026-04-12 15:43:55,380 - __main__ - INFO - Bot: @starspaymee_kinobot (8443009413)
+2026-04-12 15:44:00,289 - __main__ - INFO - API Points: 54
+2026-04-12 15:44:00,746 - __main__ - INFO - Bot commands menu updated
+2026-04-12 15:44:00,746 - aiogram.dispatcher - INFO - Start polling
+2026-04-12 15:44:01,049 - aiogram.dispatcher - INFO - Run polling for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:44:22,416 - aiogram.event - INFO - Update id=369235053 is handled. Duration 1561 ms by bot id=8443009413
+2026-04-12 15:44:38,471 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files "HTTP/1.1 200 OK"
+2026-04-12 15:44:40,374 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=AMNfjG2CnYvbFzP5DqFRHT58z-rHMmpwJjjSQOA-3bMePe8e0EyiZGnbEx-WtQEFneaqhItFYTh0bDzG-xwsgPqalUBkNRtRxzyF3y713_ixqA&upload_protocol=resumable "HTTP/1.1 200 OK"
+2026-04-12 15:44:40,400 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-04-12 15:44:40,595 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent "HTTP/1.1 400 Bad Request"
+2026-04-12 15:44:40,600 - app.services.gemini_voice - ERROR - Gemini transcription error: 400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'API key expired. Please renew the API key.', 'status': 'INVALID_ARGUMENT', 'details': [{'@type': 'type.googleapis.com/google.rpc.ErrorInfo', 'reason': 'API_KEY_INVALID', 'domain': 'googleapis.com', 'metadata': {'service': 'generativelanguage.googleapis.com'}}, {'@type': 'type.googleapis.com/google.rpc.LocalizedMessage', 'locale': 'en-US', 'message': 'API key expired. Please renew the API key.'}]}}
+2026-04-12 15:44:41,177 - aiogram.event - INFO - Update id=369235054 is handled. Duration 9202 ms by bot id=8443009413
+2026-04-12 15:46:41,826 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-12 15:46:41,826 - __main__ - INFO - Bot shutting down...
+2026-04-12 15:46:41,831 - __main__ - INFO - Cleanup complete
+2026-04-12 15:46:42,033 - aiogram.dispatcher - INFO - Polling stopped for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:46:42,038 - __main__ - INFO - Bot stopped by user
+2026-04-12 15:47:36,326 - __main__ - INFO - Starting polling...
+2026-04-12 15:47:36,326 - __main__ - INFO - Bot starting up...
+2026-04-12 15:47:36,439 - __main__ - INFO - Database initialized
+2026-04-12 15:47:37,221 - __main__ - INFO - Bot: @starspaymee_kinobot (8443009413)
+2026-04-12 15:47:41,928 - __main__ - INFO - API Points: 54
+2026-04-12 15:47:42,341 - __main__ - INFO - Bot commands menu updated
+2026-04-12 15:47:42,342 - aiogram.dispatcher - INFO - Start polling
+2026-04-12 15:47:42,650 - aiogram.dispatcher - INFO - Run polling for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:47:44,124 - aiogram.event - INFO - Update id=369235055 is handled. Duration 952 ms by bot id=8443009413
+2026-04-12 15:48:06,519 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files "HTTP/1.1 200 OK"
+2026-04-12 15:48:08,115 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=AMNfjG3I7chxK0tTaqOGS0N9KbsFFoI_X-PHhwMWAxOhuWNTLY4Lb0gZsBqCXJIh3wLvJLggG09x-ckddzOhWGTpWk7pd9AGWO6w7BWQTnMkrw&upload_protocol=resumable "HTTP/1.1 200 OK"
+2026-04-12 15:48:08,119 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-04-12 15:48:09,158 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent "HTTP/1.1 404 Not Found"
+2026-04-12 15:48:09,160 - app.services.gemini_voice - ERROR - Gemini transcription error: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'This model models/gemini-2.0-flash is no longer available to new users. Please update your code to use a newer model for the latest features and improvements.', 'status': 'NOT_FOUND'}}
+2026-04-12 15:48:10,044 - aiogram.event - INFO - Update id=369235056 is handled. Duration 8797 ms by bot id=8443009413
+2026-04-12 15:49:02,924 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-12 15:49:02,924 - __main__ - INFO - Bot shutting down...
+2026-04-12 15:49:02,930 - __main__ - INFO - Cleanup complete
+2026-04-12 15:49:03,120 - aiogram.dispatcher - INFO - Polling stopped for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:49:03,122 - __main__ - INFO - Bot stopped by user
+2026-04-12 15:49:07,903 - __main__ - INFO - Starting polling...
+2026-04-12 15:49:07,904 - __main__ - INFO - Bot starting up...
+2026-04-12 15:49:07,991 - __main__ - INFO - Database initialized
+2026-04-12 15:49:08,773 - __main__ - INFO - Bot: @starspaymee_kinobot (8443009413)
+2026-04-12 15:49:13,275 - __main__ - INFO - API Points: 54
+2026-04-12 15:49:13,498 - __main__ - INFO - Bot commands menu updated
+2026-04-12 15:49:13,499 - aiogram.dispatcher - INFO - Start polling
+2026-04-12 15:49:13,838 - aiogram.dispatcher - INFO - Run polling for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:49:25,178 - aiogram.event - INFO - Update id=369235057 is handled. Duration 844 ms by bot id=8443009413
+2026-04-12 15:49:37,786 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files "HTTP/1.1 200 OK"
+2026-04-12 15:49:39,078 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=AMNfjG0Z0ZcjRe-vZFfp53DACzFTERpQ3yy4KkCqtslu3gclrLBKIqW9BtB0xy4L9owGTahgHDdFKLVptPblBi19Vi-vwjaed2xNwPyW1wy3LA&upload_protocol=resumable "HTTP/1.1 200 OK"
+2026-04-12 15:49:39,080 - google_genai.models - INFO - AFC is enabled with max remote calls: 10.
+2026-04-12 15:49:39,845 - httpx - INFO - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent "HTTP/1.1 404 Not Found"
+2026-04-12 15:49:39,849 - app.services.gemini_voice - ERROR - Gemini transcription error: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-12 15:49:40,922 - aiogram.event - INFO - Update id=369235058 is handled. Duration 7672 ms by bot id=8443009413
+2026-04-12 15:50:35,747 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-12 15:50:35,747 - __main__ - INFO - Bot shutting down...
+2026-04-12 15:50:35,753 - __main__ - INFO - Cleanup complete
+2026-04-12 15:50:35,841 - aiogram.dispatcher - ERROR - Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 1] [SSL: APPLICATION_DATA_AFTER_CLOSE_NOTIFY] application data after close notify (_ssl.c:2685)
+2026-04-12 15:50:35,842 - aiogram.dispatcher - WARNING - Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8443009413)
+2026-04-12 15:50:35,956 - aiogram.dispatcher - INFO - Polling stopped for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
+2026-04-12 15:50:35,960 - __main__ - INFO - Bot stopped by user
