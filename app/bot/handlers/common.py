@@ -69,12 +69,23 @@ Quyidagi tugmalardan foydalanib botni boshqaring:
         )
         return
     
-    # 2. Always ask for language on /start to update their profile fully
-    await message.answer(
-        get_language_selection_message(),
-        reply_markup=get_language_selection_keyboard(),
-        parse_mode="HTML"
-    )
+    if is_new_user:
+        # Show language selection for new users
+        await message.answer(
+            get_language_selection_message(),
+            reply_markup=get_language_selection_keyboard(),
+            parse_mode="HTML"
+        )
+    else:
+        # Show welcome message with user's saved language
+        lang = normalize_language_code(db_user.language_code)
+        welcome_text = get_text("welcome", lang, name=message.from_user.first_name)
+        
+        await message.answer(
+            welcome_text,
+            reply_markup=get_main_menu_keyboard(lang),
+            parse_mode="HTML"
+        )
 
 
 @router.callback_query(F.data.startswith("set_lang:"))
