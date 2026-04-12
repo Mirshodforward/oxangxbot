@@ -145,6 +145,7 @@ async def admin_stats(callback: CallbackQuery, session: AsyncSession):
 
 👥 <b>Foydalanuvchilar:</b>
 ├ Jami: <b>{stats['total_users']}</b>
+├ Username'i borlar: <b>{stats['users_with_username']}</b>
 ├ Faol (24 soat): <b>{stats['active_24h']}</b>
 ├ Faol (7 kun): <b>{stats['active_7d']}</b>
 └ Faol (30 kun): <b>{stats['active_30d']}</b>
@@ -332,6 +333,8 @@ Shu hafta qo'shilgan: <b>{stats['new_this_week']}</b>
         text = f"""📋 <b>Barcha foydalanuvchilar</b>
 
 Jami ro'yxatdagi userlar: <b>{stats['total_users']}</b>
+├ Username ko'rsatganlar: <b>{stats['users_with_username']}</b> ({round(stats['users_with_username']/max(stats['total_users'],1)*100, 1)}%)
+└ Username yo'qlar: <b>{stats['total_users'] - stats['users_with_username']}</b> ({round((stats['total_users'] - stats['users_with_username'])/max(stats['total_users'],1)*100, 1)}%)
 
 📊 Faollik bo'yicha:
 ├ 24 soat: <b>{stats['active_24h']}</b> ({round(stats['active_24h']/max(stats['total_users'],1)*100, 1)}%)

@@ -712,8 +712,15 @@ class AdminRepository:
         total_shazams = await self.session.execute(select(func.count(MusicRecognition.id)))
         total_shazams = total_shazams.scalar() or 0
         
+        # Total users with username
+        users_with_username = await self.session.execute(
+            select(func.count(User.id)).where(User.username.is_not(None))
+        )
+        users_with_username = users_with_username.scalar() or 0
+        
         return {
             "total_users": total_users,
+            "users_with_username": users_with_username,
             "active_24h": active_24h,
             "active_7d": active_7d,
             "active_30d": active_30d,
