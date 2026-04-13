@@ -363,22 +363,6 @@ def get_channels_keyboard(channels: list) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_channel_add_kind_keyboard() -> InlineKeyboardMarkup:
-    """Kanal yoki guruhni bot orqali ulash"""
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="📢 Kanal", callback_data="channel:link_kind:channel"),
-        InlineKeyboardButton(text="👥 Guruh", callback_data="channel:link_kind:group"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="✏️ @username bilan", callback_data="channel:add_manual"),
-    )
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Ro'yxatga", callback_data="admin:channels"),
-    )
-    return builder.as_markup()
-
-
 def get_subscription_keyboard(channels: list) -> InlineKeyboardMarkup:
     """Forced subscription keyboard for users"""
     builder = InlineKeyboardBuilder()

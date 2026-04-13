@@ -1,6 +1,6 @@
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware, Bot
-from aiogram.types import Message, CallbackQuery, ChatMemberUpdated, TelegramObject
+from aiogram.types import Message, CallbackQuery, TelegramObject
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.connection import async_session
@@ -38,9 +38,6 @@ class UserMiddleware(BaseMiddleware):
             user = event.from_user
         elif isinstance(event, CallbackQuery):
             user = event.from_user
-        elif isinstance(event, ChatMemberUpdated):
-            user = event.from_user
-        
         if user and not user.is_bot:
             session: AsyncSession = data.get("session")
             if session:
@@ -79,9 +76,6 @@ class ThrottlingMiddleware(BaseMiddleware):
             user = event.from_user
         elif isinstance(event, CallbackQuery):
             user = event.from_user
-        elif isinstance(event, ChatMemberUpdated):
-            user = event.from_user
-        
         if user:
             user_id = user.id
             current_time = time.time()
