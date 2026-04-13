@@ -3,8 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Environments
+# Environments (hech qachon tokenlarni repo ga qo'shmang)
 .env
+.env.local
 .venv
 env/
 venv/
