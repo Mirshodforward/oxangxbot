@@ -46,19 +46,11 @@ def get_language_selection_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_main_menu_keyboard(lang: str = LANG_UZ) -> ReplyKeyboardMarkup:
-    """Main menu keyboard with localization support"""
+    """Asosiy menyu (startdan keyin): faol funksiyalar."""
     builder = ReplyKeyboardBuilder()
     builder.row(
-        KeyboardButton(text=get_text("btn_shazam", lang)),
-        KeyboardButton(text=get_text("btn_top_music", lang))
-    )
-    builder.row(
+        KeyboardButton(text=get_text("btn_top_music", lang)),
         KeyboardButton(text=get_text("btn_search_music", lang)),
-        KeyboardButton(text=get_text("btn_statistics", lang))
-    )
-    builder.row(
-        KeyboardButton(text=get_text("btn_help", lang)),
-        KeyboardButton(text=get_text("btn_settings", lang))
     )
     return builder.as_markup(resize_keyboard=True)
 
@@ -294,14 +286,14 @@ def get_admin_main_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin:users")
     )
     builder.row(
-        InlineKeyboardButton(text="📢 Broadcast", callback_data="admin:broadcast"),
+        InlineKeyboardButton(text="📢 Post yuborish", callback_data="admin:broadcast"),
         InlineKeyboardButton(text="📣 Majburiy obuna", callback_data="admin:channels")
     )
     builder.row(
-        InlineKeyboardButton(text="� Kesh statistikasi", callback_data="admin:cache")
+        InlineKeyboardButton(text="🗄 Kesh statistikasi", callback_data="admin:cache")
     )
     builder.row(
-        InlineKeyboardButton(text="�🔄 Yangilash", callback_data="admin:refresh")
+        InlineKeyboardButton(text="🔄 Yangilash", callback_data="admin:refresh")
     )
     
     return builder.as_markup()
@@ -329,30 +321,61 @@ def get_broadcast_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def _required_channel_open_url(channel) -> str | None:
+    """Obuna uchun ochiladigan havola (invite yoki @username)."""
+    link = getattr(channel, "invite_link", None)
+    if link:
+        return link
+    un = (channel.channel_username or "").strip().lstrip("@")
+    if un and un not in ("-", "private", "_") and not un.startswith("-100"):
+        return f"https://t.me/{un}"
+    return None
+
+
 def get_channels_keyboard(channels: list) -> InlineKeyboardMarkup:
     """Required channels management keyboard"""
     builder = InlineKeyboardBuilder()
     
     for channel in channels:
         status = "✅" if channel.is_active else "❌"
+        un = (channel.channel_username or "").strip()
+        label = f"@{un}" if un and un not in ("-", "private", "_") and not un.startswith("-100") else channel.channel_title
+        short = label if len(label) <= 28 else label[:25] + "…"
         builder.row(
             InlineKeyboardButton(
-                text=f"{status} @{channel.channel_username}",
-                callback_data=f"channel:toggle:{channel.channel_id}"
+                text=f"{status} {short}",
+                callback_data=f"channel:toggle:{channel.id}"
             ),
             InlineKeyboardButton(
                 text="🗑",
-                callback_data=f"channel:delete:{channel.channel_id}"
+                callback_data=f"channel:delete:{channel.id}"
             )
         )
     
-    builder.row(
-        InlineKeyboardButton(text="➕ Kanal qo'shish", callback_data="channel:add")
-    )
+    at_limit = len(channels) >= 5
+    add_text = "➕ Kanal qo'shish" if not at_limit else "➕ Limit (5/5)"
+    add_cb = "channel:add" if not at_limit else "channel:add_limit"
+    builder.row(InlineKeyboardButton(text=add_text, callback_data=add_cb))
     builder.row(
         InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin:back")
     )
     
+    return builder.as_markup()
+
+
+def get_channel_add_kind_keyboard() -> InlineKeyboardMarkup:
+    """Kanal yoki guruhni bot orqali ulash"""
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📢 Kanal", callback_data="channel:link_kind:channel"),
+        InlineKeyboardButton(text="👥 Guruh", callback_data="channel:link_kind:group"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="✏️ @username bilan", callback_data="channel:add_manual"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Ro'yxatga", callback_data="admin:channels"),
+    )
     return builder.as_markup()
 
 
@@ -361,12 +384,23 @@ def get_subscription_keyboard(channels: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     
     for channel in channels:
-        builder.row(
-            InlineKeyboardButton(
-                text=f"📢 {channel.channel_title}",
-                url=f"https://t.me/{channel.channel_username}"
+        url = _required_channel_open_url(channel)
+        title = channel.channel_title
+        short = title if len(title) <= 30 else title[:27] + "…"
+        if url:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"📢 {short}",
+                    url=url,
+                )
             )
-        )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"📢 {short}",
+                    callback_data="subscription:no_link",
+                )
+            )
     
     builder.row(
         InlineKeyboardButton(text="✅ Tekshirish", callback_data="check_subscription")

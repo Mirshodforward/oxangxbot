@@ -522,8 +522,14 @@ class MusicRepository:
         return record
 
 
+class MaxRequiredChannelsError(Exception):
+    """Majburiy kanallar soni limitdan oshdi (5)."""
+
+
 class ChannelRepository:
     """Repository for required channel operations"""
+    
+    MAX_REQUIRED_CHANNELS = 5
     
     def __init__(self, session: AsyncSession):
         self.session = session
@@ -542,41 +548,62 @@ class ChannelRepository:
         )
         return list(result.scalars().all())
     
+    async def count_all_channels(self) -> int:
+        result = await self.session.execute(select(func.count()).select_from(RequiredChannel))
+        return int(result.scalar_one() or 0)
+    
+    async def get_by_telegram_chat_id(self, channel_id: int) -> Optional[RequiredChannel]:
+        result = await self.session.execute(
+            select(RequiredChannel).where(RequiredChannel.channel_id == channel_id)
+        )
+        return result.scalar_one_or_none()
+    
+    async def get_by_row_id(self, row_id: int) -> Optional[RequiredChannel]:
+        result = await self.session.execute(select(RequiredChannel).where(RequiredChannel.id == row_id))
+        return result.scalar_one_or_none()
+    
     async def add_channel(
         self,
         channel_id: int,
         channel_username: str,
-        channel_title: str
+        channel_title: str,
+        invite_link: Optional[str] = None,
     ) -> RequiredChannel:
-        """Add new required channel"""
+        """Yangi majburiy kanal/guruh (maksimal 5 ta jami)."""
+        existing = await self.get_by_telegram_chat_id(channel_id)
+        if existing:
+            existing.channel_username = channel_username
+            existing.channel_title = channel_title
+            if invite_link:
+                existing.invite_link = invite_link
+            await self.session.commit()
+            await self.session.refresh(existing)
+            return existing
+        
+        if await self.count_all_channels() >= self.MAX_REQUIRED_CHANNELS:
+            raise MaxRequiredChannelsError()
+        
         channel = RequiredChannel(
             channel_id=channel_id,
             channel_username=channel_username,
-            channel_title=channel_title
+            channel_title=channel_title,
+            invite_link=invite_link,
         )
         self.session.add(channel)
         await self.session.commit()
         await self.session.refresh(channel)
         return channel
     
-    async def remove_channel(self, channel_id: int) -> bool:
-        """Remove channel by ID"""
-        result = await self.session.execute(
-            select(RequiredChannel).where(RequiredChannel.channel_id == channel_id)
-        )
-        channel = result.scalar_one_or_none()
+    async def remove_channel_by_row_id(self, row_id: int) -> bool:
+        channel = await self.get_by_row_id(row_id)
         if channel:
             await self.session.delete(channel)
             await self.session.commit()
             return True
         return False
     
-    async def toggle_channel(self, channel_id: int) -> Optional[RequiredChannel]:
-        """Toggle channel active status"""
-        result = await self.session.execute(
-            select(RequiredChannel).where(RequiredChannel.channel_id == channel_id)
-        )
-        channel = result.scalar_one_or_none()
+    async def toggle_channel_by_row_id(self, row_id: int) -> Optional[RequiredChannel]:
+        channel = await self.get_by_row_id(row_id)
         if channel:
             channel.is_active = not channel.is_active
             await self.session.commit()

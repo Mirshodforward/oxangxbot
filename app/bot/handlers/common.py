@@ -1,21 +1,23 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.bot.keyboards import (
-    get_main_menu_keyboard, 
+    get_main_menu_keyboard,
     get_language_selection_keyboard,
     get_settings_keyboard,
-    get_admin_main_keyboard
+    get_admin_main_keyboard,
+    get_subscription_keyboard,
 )
 from app.bot.locales import (
     get_text, LANG_UZ, LANG_UZ_CYRL, LANG_RU, LANG_EN,
     LANGUAGES, normalize_language_code
 )
 from app.database.models import User
-from app.database.repositories import UserRepository, DownloadRepository, AdminRepository
+from app.database.repositories import UserRepository, DownloadRepository, AdminRepository, ChannelRepository
+from app.bot.subscription import check_user_subscription
 
 router = Router(name="common")
 
@@ -36,8 +38,16 @@ def get_language_selection_message() -> str:
 {get_text('choose_language', LANG_EN)}"""
 
 
+def _subscription_gate_text() -> str:
+    return (
+        "📢 <b>Majburiy obuna</b>\n\n"
+        "Botdan foydalanish uchun <b>barcha</b> ko'rsatilgan kanal va guruhlarga "
+        "a'zo bo'ling, so'ng <b>Tekshirish</b> tugmasini bosing.\n"
+    )
+
+
 @router.message(CommandStart())
-async def cmd_start(message: Message, db_user: User, is_new_user: bool, session: AsyncSession):
+async def cmd_start(message: Message, db_user: User, is_new_user: bool, session: AsyncSession, bot: Bot):
     """Handle /start command"""
     
     # 1. Update user explicitly on every start
@@ -69,6 +79,17 @@ Quyidagi tugmalardan foydalanib botni boshqaring:
         )
         return
     
+    channel_repo = ChannelRepository(session)
+    if await channel_repo.get_active_channels():
+        ok, missing = await check_user_subscription(bot, message.from_user.id, session)
+        if not ok:
+            await message.answer(
+                _subscription_gate_text(),
+                reply_markup=get_subscription_keyboard(missing),
+                parse_mode="HTML",
+            )
+            return
+    
     if is_new_user:
         # Show language selection for new users
         await message.answer(
@@ -89,7 +110,7 @@ Quyidagi tugmalardan foydalanib botni boshqaring:
 
 
 @router.callback_query(F.data.startswith("set_lang:"))
-async def callback_set_language(callback: CallbackQuery, session: AsyncSession, db_user: User):
+async def callback_set_language(callback: CallbackQuery, session: AsyncSession, db_user: User, bot: Bot):
     """Handle language selection callback"""
     lang_code = callback.data.split(":")[1]
     
@@ -107,6 +128,18 @@ async def callback_set_language(callback: CallbackQuery, session: AsyncSession, 
         parse_mode="HTML"
     )
     
+    channel_repo = ChannelRepository(session)
+    if await channel_repo.get_active_channels():
+        ok, missing = await check_user_subscription(bot, callback.from_user.id, session)
+        if not ok:
+            await callback.message.answer(
+                _subscription_gate_text(),
+                reply_markup=get_subscription_keyboard(missing),
+                parse_mode="HTML",
+            )
+            await callback.answer()
+            return
+    
     # Send welcome message with the new language
     welcome_text = get_text("welcome", lang_code, name=callback.from_user.first_name)
     welcome_text += get_text("welcome_new_user", lang_code)
@@ -118,6 +151,15 @@ async def callback_set_language(callback: CallbackQuery, session: AsyncSession, 
     )
     
     await callback.answer()
+
+
+@router.callback_query(F.data == "subscription:no_link")
+async def callback_subscription_no_link(callback: CallbackQuery):
+    """Havolasiz kanal tugmasi (admin bilan bog'lanish)"""
+    await callback.answer(
+        "Bu kanal uchun havola sozlanmagan. Admin bilan bog'laning.",
+        show_alert=True,
+    )
 
 
 @router.callback_query(F.data == "change_language")

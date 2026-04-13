@@ -6,7 +6,7 @@ import asyncio
 from typing import Optional
 
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
 from aiogram.enums import ChatMemberStatus, ParseMode
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -17,19 +17,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database.models import User
 from app.database.repositories import (
-    AdminRepository, ChannelRepository, BroadcastRepository, UserRepository,
-    CacheStatsRepository, YouTubeCacheRepository, MusicSearchCacheRepository, CacheRepository
+    AdminRepository,
+    ChannelRepository,
+    BroadcastRepository,
+    UserRepository,
+    CacheStatsRepository,
+    YouTubeCacheRepository,
+    MusicSearchCacheRepository,
+    CacheRepository,
+    MaxRequiredChannelsError,
 )
 from app.bot.keyboards import (
     get_admin_main_keyboard,
     get_broadcast_keyboard,
     get_channels_keyboard,
+    get_channel_add_kind_keyboard,
     get_subscription_keyboard,
     get_broadcast_confirm_keyboard,
     get_admin_back_keyboard,
     get_users_keyboard,
-    get_main_menu_keyboard
+    get_main_menu_keyboard,
 )
+from app.bot.subscription import check_user_subscription
 from app.bot.locales import get_text, normalize_language_code
 
 logger = logging.getLogger(__name__)
@@ -42,6 +51,7 @@ class AdminStates(StatesGroup):
     waiting_broadcast_photo = State()
     waiting_broadcast_count = State()
     waiting_channel_username = State()
+    waiting_channel_link = State()
 
 
 def get_html_caption(message: Message) -> str:
@@ -777,26 +787,32 @@ async def broadcast_history(callback: CallbackQuery, session: AsyncSession):
 
 # ==================== REQUIRED CHANNELS ====================
 
+def _channels_admin_text(channels: list) -> str:
+    n = len(channels)
+    text = f"""📣 <b>Majburiy obuna kanallari</b> ({n}/5)
+
+Foydalanuvchi botdan foydalanishi uchun <b>barcha faol</b> kanal va guruhlarga a'zo bo'lishi kerak.
+
+✅ — faol  |  ❌ — nofaol
+"""
+    if not channels:
+        text += "\n<i>Hali kanal qo'shilmagan</i>"
+    return text
+
+
 @router.callback_query(F.data == "admin:channels")
-async def admin_channels(callback: CallbackQuery, session: AsyncSession):
+async def admin_channels(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Manage required channels"""
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Ruxsat yo'q", show_alert=True)
         return
     
+    if await state.get_state() == AdminStates.waiting_channel_link.state:
+        await state.clear()
+    
     channel_repo = ChannelRepository(session)
     channels = await channel_repo.get_all_channels()
-    
-    text = """📣 <b>Majburiy obuna kanallari</b>
-
-Foydalanuvchilar botdan foydalanish uchun quyidagi kanallarga obuna bo'lishi kerak:
-
-✅ - faol
-❌ - nofaol
-"""
-    
-    if not channels:
-        text += "\n<i>Hali kanal qo'shilmagan</i>"
+    text = _channels_admin_text(channels)
     
     await callback.message.edit_text(
         text,
@@ -806,24 +822,188 @@ Foydalanuvchilar botdan foydalanish uchun quyidagi kanallarga obuna bo'lishi ker
     await callback.answer()
 
 
+@router.callback_query(F.data == "channel:add_limit")
+async def channel_add_limit(callback: CallbackQuery):
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        return
+    await callback.answer("Maksimal 5 ta majburiy kanal/guruh. Avval birini o'chiring.", show_alert=True)
+
+
 @router.callback_query(F.data == "channel:add")
 async def channel_add(callback: CallbackQuery, state: FSMContext):
-    """Add new channel"""
+    """Kanal yoki guruh qo'shish rejimini tanlash"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        return
+    
+    await state.clear()
+    await callback.message.edit_text(
+        "➕ <b>Majburiy kanal/guruh qo'shish</b>\n\n"
+        "<b>📢 Kanal</b> — faqat kanal (broadcast).\n"
+        "<b>👥 Guruh</b> — guruh yoki superguruh.\n\n"
+        "Yoki <b>@username</b> bilan qo'lda qo'shing (ochiq kanal/guruh).",
+        reply_markup=get_channel_add_kind_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("channel:link_kind:"))
+async def channel_link_kind(callback: CallbackQuery, state: FSMContext):
+    """Botni admin qilib ulash (my_chat_member)"""
+    if not is_admin(callback.from_user.id):
+        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        return
+    
+    kind = callback.data.split(":")[2]
+    if kind not in ("channel", "group"):
+        await callback.answer()
+        return
+    
+    await state.set_state(AdminStates.waiting_channel_link)
+    await state.update_data(link_kind=kind)
+    
+    if kind == "channel":
+        hint = (
+            "1) Kanalingizga kiring → <b>Administratorlar</b> → botni qo'shing.\n"
+            "2) Botga kamida <b>foydalanuvchilarni ko'rish</b> (yoki a'zolarni boshqarish) "
+            "kabi huquqlar bering — obunani tekshirish uchun kerak.\n"
+            "3) Admin qilganingizdan keyin bu yerga avtomatik xabar keladi.\n\n"
+            "<i>Shu bosqichni faqat siz (admin) bajarishingiz kerak.</i>"
+        )
+    else:
+        hint = (
+            "1) Guruh/superguruhga botni qo'shing va <b>admin</b> qiling.\n"
+            "2) Foydalanuvchilarni ko'rish / cheklovlar bo'yicha a'zolarni boshqarish "
+            "huquqlaridan keraklisini yoqing.\n"
+            "3) Admin qilganingizdan keyin bu yerga avtomatik xabar keladi.\n\n"
+            "<i>Shu bosqichni faqat siz (admin) bajarishingiz kerak.</i>"
+        )
+    
+    await callback.message.edit_text(
+        "🔗 <b>Botni ulash</b>\n\n" + hint,
+        reply_markup=get_channel_add_kind_keyboard(),
+        parse_mode="HTML",
+    )
+    await callback.answer("Kanal/guruhda botni admin qiling")
+
+
+@router.callback_query(F.data == "channel:add_manual")
+async def channel_add_manual(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         await callback.answer("❌ Ruxsat yo'q", show_alert=True)
         return
     
     await state.set_state(AdminStates.waiting_channel_username)
-    
     await callback.message.edit_text(
-        "➕ <b>Kanal qo'shish</b>\n\n"
-        "Kanal username ni kiriting (@ bilan yoki @ siz):\n"
-        "Masalan: <code>@kanal_nomi</code> yoki <code>kanal_nomi</code>\n\n"
-        "⚠️ Bot kanalda admin bo'lishi kerak!",
+        "✏️ <b>@username bilan qo'shish</b>\n\n"
+        "Ochiq kanal yoki guruh username ni yuboring (@ bilan yoki @ siz):\n"
+        "Masalan: <code>@kanal</code>\n\n"
+        "⚠️ Bot ushbu chatda <b>admin</b> bo'lishi kerak.\n"
+        "⚠️ Maksimal <b>5 ta</b> majburiy obuna.",
         reply_markup=get_admin_back_keyboard(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
     await callback.answer()
+
+
+@router.my_chat_member()
+async def admin_link_required_chat(
+    event: ChatMemberUpdated,
+    bot: Bot,
+    state: FSMContext,
+    session: AsyncSession,
+):
+    """Admin botni kanal/guruhga admin qilganda chat_id ni bazaga yozish"""
+    actor = event.from_user
+    if not actor or actor.id not in settings.ADMIN_IDS:
+        return
+    
+    current = await state.get_state()
+    if current != AdminStates.waiting_channel_link.state:
+        return
+    
+    if event.new_chat_member.user.id != bot.id:
+        return
+    
+    new_status = event.new_chat_member.status
+    if new_status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+        return
+    
+    data = await state.get_data()
+    kind = data.get("link_kind")
+    chat = event.chat
+    ctype = chat.type
+    
+    if kind == "channel" and ctype != "channel":
+        try:
+            await bot.send_message(
+                actor.id,
+                "❌ Tanlov: <b>Kanal</b> — lekin bu boshqa chat turi. Qaytadan tanlang.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return
+    
+    if kind == "group" and ctype not in ("group", "supergroup"):
+        try:
+            await bot.send_message(
+                actor.id,
+                "❌ Tanlov: <b>Guruh</b> — lekin bu kanal yoki boshqa chat. Qaytadan tanlang.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        return
+    
+    channel_repo = ChannelRepository(session)
+    invite_link: Optional[str] = None
+    try:
+        invite_link = await bot.export_chat_invite_link(chat.id)
+    except Exception:
+        try:
+            full = await bot.get_chat(chat.id)
+            invite_link = getattr(full, "invite_link", None)
+        except Exception:
+            invite_link = None
+    
+    username = (chat.username or "").strip() or "-"
+    title = chat.title or ("Kanal" if ctype == "channel" else "Guruh")
+    
+    try:
+        await channel_repo.add_channel(
+            channel_id=chat.id,
+            channel_username=username,
+            channel_title=title,
+            invite_link=invite_link,
+        )
+    except MaxRequiredChannelsError:
+        try:
+            await bot.send_message(
+                actor.id,
+                "❌ Majburiy kanallar limiti: maksimal <b>5 ta</b>. Avval keraksizini o'chiring.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+        await state.clear()
+        return
+    
+    await state.clear()
+    try:
+        await bot.send_message(
+            actor.id,
+            "✅ <b>Qo'shildi</b>\n\n"
+            f"📢 {html_decoration.quote(title)}\n"
+            f"<code>{chat.id}</code>\n"
+            + (f"\n🔗 Havola: {html_decoration.quote(invite_link)}" if invite_link else ""),
+            parse_mode="HTML",
+            reply_markup=get_admin_back_keyboard(),
+        )
+    except Exception as e:
+        logger.warning("Could not notify admin after channel link: %s", e)
 
 
 @router.message(AdminStates.waiting_channel_username, F.text)
@@ -835,41 +1015,58 @@ async def receive_channel_username(message: Message, bot: Bot, state: FSMContext
     username = message.text.strip().replace("@", "").replace("https://t.me/", "")
     
     try:
-        # Get channel info
         chat = await bot.get_chat(f"@{username}")
         
-        # Check if bot is admin
         bot_member = await bot.get_chat_member(chat.id, bot.id)
         if bot_member.status not in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR]:
             await message.answer(
-                "❌ Bot bu kanalda admin emas!\n"
-                "Avval botni kanalga admin qiling.",
+                "❌ Bot bu chatda admin emas!\n"
+                "Avval botni admin qiling.",
                 reply_markup=get_admin_back_keyboard()
             )
             await state.clear()
             return
         
-        # Add channel
+        invite_link: Optional[str] = None
+        try:
+            invite_link = await bot.export_chat_invite_link(chat.id)
+        except Exception:
+            try:
+                full = await bot.get_chat(chat.id)
+                invite_link = getattr(full, "invite_link", None)
+            except Exception:
+                invite_link = None
+        
         channel_repo = ChannelRepository(session)
-        await channel_repo.add_channel(
-            channel_id=chat.id,
-            channel_username=username,
-            channel_title=chat.title
-        )
+        try:
+            await channel_repo.add_channel(
+                channel_id=chat.id,
+                channel_username=username,
+                channel_title=chat.title or username,
+                invite_link=invite_link,
+            )
+        except MaxRequiredChannelsError:
+            await message.answer(
+                "❌ Maksimal 5 ta majburiy kanal. Avval birini o'chiring.",
+                reply_markup=get_admin_back_keyboard(),
+            )
+            await state.clear()
+            return
         
         await state.clear()
         await message.answer(
-            f"✅ Kanal qo'shildi!\n\n"
+            f"✅ Qo'shildi!\n\n"
             f"📢 {chat.title}\n"
-            f"@{username}",
-            reply_markup=get_admin_back_keyboard()
+            f"<code>{chat.id}</code>\n@{username}",
+            reply_markup=get_admin_back_keyboard(),
+            parse_mode="HTML",
         )
         
     except Exception as e:
         logger.error(f"Error adding channel: {e}")
         await message.answer(
             f"❌ Xatolik: {str(e)}\n\n"
-            "Kanal topilmadi yoki bot admin emas.",
+            "Chat topilmadi yoki bot admin emas.",
             reply_markup=get_admin_back_keyboard()
         )
         await state.clear()
@@ -882,18 +1079,21 @@ async def channel_toggle(callback: CallbackQuery, session: AsyncSession):
         await callback.answer("❌ Ruxsat yo'q", show_alert=True)
         return
     
-    channel_id = int(callback.data.split(":")[2])
+    row_id = int(callback.data.split(":")[2])
     
     channel_repo = ChannelRepository(session)
-    channel = await channel_repo.toggle_channel(channel_id)
+    channel = await channel_repo.toggle_channel_by_row_id(row_id)
     
     if channel:
         status = "faollashtirildi ✅" if channel.is_active else "o'chirildi ❌"
         await callback.answer(f"Kanal {status}")
     
-    # Refresh list
     channels = await channel_repo.get_all_channels()
-    await callback.message.edit_reply_markup(reply_markup=get_channels_keyboard(channels))
+    await callback.message.edit_text(
+        _channels_admin_text(channels),
+        reply_markup=get_channels_keyboard(channels),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data.startswith("channel:delete:"))
@@ -903,63 +1103,25 @@ async def channel_delete(callback: CallbackQuery, session: AsyncSession):
         await callback.answer("❌ Ruxsat yo'q", show_alert=True)
         return
     
-    channel_id = int(callback.data.split(":")[2])
+    row_id = int(callback.data.split(":")[2])
     
     channel_repo = ChannelRepository(session)
-    success = await channel_repo.remove_channel(channel_id)
+    success = await channel_repo.remove_channel_by_row_id(row_id)
     
     if success:
-        await callback.answer("🗑 Kanal o'chirildi")
+        await callback.answer("🗑 O'chirildi")
     else:
-        await callback.answer("❌ Kanal topilmadi", show_alert=True)
+        await callback.answer("❌ Topilmadi", show_alert=True)
     
-    # Refresh list
     channels = await channel_repo.get_all_channels()
-    
-    text = """📣 <b>Majburiy obuna kanallari</b>
-
-Foydalanuvchilar botdan foydalanish uchun quyidagi kanallarga obuna bo'lishi kerak:
-
-✅ - faol
-❌ - nofaol
-"""
-    
-    if not channels:
-        text += "\n<i>Hali kanal qo'shilmagan</i>"
-    
     await callback.message.edit_text(
-        text,
+        _channels_admin_text(channels),
         reply_markup=get_channels_keyboard(channels),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
 
 
 # ==================== SUBSCRIPTION CHECK ====================
-
-async def check_user_subscription(bot: Bot, user_id: int, session: AsyncSession) -> tuple[bool, list]:
-    """
-    Check if user is subscribed to all required channels
-    Returns (is_subscribed, list of channels user needs to join)
-    """
-    channel_repo = ChannelRepository(session)
-    channels = await channel_repo.get_active_channels()
-    
-    if not channels:
-        return True, []
-    
-    not_subscribed = []
-    
-    for channel in channels:
-        try:
-            member = await bot.get_chat_member(channel.channel_id, user_id)
-            if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED, ChatMemberStatus.RESTRICTED]:
-                not_subscribed.append(channel)
-        except Exception as e:
-            logger.debug(f"Error checking subscription for channel {channel.channel_id}: {e}")
-            # If we can't check, assume not subscribed
-            not_subscribed.append(channel)
-    
-    return len(not_subscribed) == 0, not_subscribed
 
 
 @router.callback_query(F.data == "check_subscription")

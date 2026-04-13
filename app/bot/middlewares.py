@@ -1,11 +1,11 @@
 from typing import Callable, Dict, Any, Awaitable
 from aiogram import BaseMiddleware, Bot
-from aiogram.types import Message, CallbackQuery, TelegramObject
-from aiogram.enums import ChatMemberStatus
+from aiogram.types import Message, CallbackQuery, ChatMemberUpdated, TelegramObject
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.connection import async_session
-from app.database.repositories import UserRepository, ChannelRepository
+from app.database.repositories import UserRepository
+from app.bot.subscription import check_user_subscription
 from app.config import settings
 
 
@@ -37,6 +37,8 @@ class UserMiddleware(BaseMiddleware):
         if isinstance(event, Message):
             user = event.from_user
         elif isinstance(event, CallbackQuery):
+            user = event.from_user
+        elif isinstance(event, ChatMemberUpdated):
             user = event.from_user
         
         if user and not user.is_bot:
@@ -77,6 +79,8 @@ class ThrottlingMiddleware(BaseMiddleware):
             user = event.from_user
         elif isinstance(event, CallbackQuery):
             user = event.from_user
+        elif isinstance(event, ChatMemberUpdated):
+            user = event.from_user
         
         if user:
             user_id = user.id
@@ -99,7 +103,7 @@ class SubscriptionMiddleware(BaseMiddleware):
     
     # Commands/callbacks that should bypass subscription check
     BYPASS_COMMANDS = {"/start", "/language"}
-    BYPASS_CALLBACKS = {"set_lang:", "check_subscription", "admin:"}
+    BYPASS_CALLBACKS = {"set_lang:", "check_subscription", "admin:", "subscription:"}
     
     async def __call__(
         self,
@@ -140,36 +144,24 @@ class SubscriptionMiddleware(BaseMiddleware):
         bot: Bot = data.get("bot")
         
         if session and bot:
-            channel_repo = ChannelRepository(session)
-            channels = await channel_repo.get_active_channels()
+            ok, not_subscribed = await check_user_subscription(bot, user.id, session)
             
-            if channels:
-                not_subscribed = []
+            if not ok:
+                from app.bot.keyboards import get_subscription_keyboard
                 
-                for channel in channels:
-                    try:
-                        member = await bot.get_chat_member(channel.channel_id, user.id)
-                        if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED, ChatMemberStatus.RESTRICTED]:
-                            not_subscribed.append(channel)
-                    except Exception:
-                        not_subscribed.append(channel)
+                text = (
+                    "📢 <b>Majburiy obuna</b>\n\n"
+                    "Botdan foydalanish uchun <b>barcha</b> ko'rsatilgan kanal va guruhlarga "
+                    "a'zo bo'ling, so'ng <b>Tekshirish</b> tugmasini bosing.\n"
+                )
                 
-                if not_subscribed:
-                    # User not subscribed - show subscription message
-                    from app.bot.keyboards import get_subscription_keyboard
-                    
-                    text = (
-                        "📢 <b>Majburiy obuna</b>\n\n"
-                        "Botdan foydalanish uchun quyidagi kanallarga obuna bo'ling:\n"
-                    )
-                    
-                    keyboard = get_subscription_keyboard(not_subscribed)
-                    
-                    if isinstance(event, Message):
-                        await event.answer(text, reply_markup=keyboard, parse_mode="HTML")
-                    elif isinstance(event, CallbackQuery):
-                        await event.answer("❌ Avval kanallarga obuna bo'ling!", show_alert=True)
-                    
-                    return None
+                keyboard = get_subscription_keyboard(not_subscribed)
+                
+                if isinstance(event, Message):
+                    await event.answer(text, reply_markup=keyboard, parse_mode="HTML")
+                elif isinstance(event, CallbackQuery):
+                    await event.answer("❌ Avval barcha kanal/guruhlarga obuna bo'ling!", show_alert=True)
+                
+                return None
         
         return await handler(event, data)

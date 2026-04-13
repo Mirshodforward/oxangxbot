@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy import text
 from typing import AsyncGenerator
 
 from app.config import settings
@@ -40,6 +41,28 @@ async def init_db():
     """Initialize database tables"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Alembic yo'q: mavjud bazalarga invite_link ustuni
+    dialect = engine.dialect.name
+    try:
+        async with engine.begin() as conn:
+            if dialect == "sqlite":
+                r = await conn.execute(text("PRAGMA table_info(required_channels)"))
+                cols = [row[1] for row in r.fetchall()]
+                if cols and "invite_link" not in cols:
+                    await conn.execute(
+                        text(
+                            "ALTER TABLE required_channels ADD COLUMN invite_link VARCHAR(500)"
+                        )
+                    )
+            elif dialect == "postgresql":
+                await conn.execute(
+                    text(
+                        "ALTER TABLE required_channels ADD COLUMN IF NOT EXISTS invite_link VARCHAR(500)"
+                    )
+                )
+    except Exception:
+        pass
 
 
 async def close_db():

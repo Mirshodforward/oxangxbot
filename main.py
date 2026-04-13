@@ -99,6 +99,9 @@ def setup_middlewares(dp: Dispatcher):
     dp.callback_query.middleware(UserMiddleware())
     dp.callback_query.middleware(SubscriptionMiddleware())
 
+    dp.my_chat_member.middleware(DatabaseMiddleware())
+    dp.my_chat_member.middleware(UserMiddleware())
+
 
 async def main():
     """Main function to start the bot"""
