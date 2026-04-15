@@ -6,12 +6,16 @@ Converts voice messages to text for music search
 import logging
 import os
 import re
+import shutil
 import subprocess
-from typing import Optional
 from dataclasses import dataclass
-from pathlib import Path
+from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+_no_ffmpeg_notice_logged = False
+_ffmpeg_checked = False
+_ffmpeg_path: Optional[str] = None
 
 # Lazy import - faster-whisper faqat kerak bo'lganda yuklanadi
 _whisper_model = None
@@ -70,43 +74,78 @@ def _get_whisper_model():
         return None
 
 
+def _ffmpeg_executable() -> Optional[str]:
+    """ffmpeg yo‘li (PATH). Windows: ffmpeg.exe ham qidiriladi."""
+    global _ffmpeg_checked, _ffmpeg_path
+    if _ffmpeg_checked:
+        return _ffmpeg_path
+    _ffmpeg_checked = True
+    for name in ("ffmpeg", "ffmpeg.exe"):
+        p = shutil.which(name)
+        if p:
+            _ffmpeg_path = p
+            return _ffmpeg_path
+    _ffmpeg_path = None
+    return None
+
+
+def _log_no_ffmpeg_once() -> None:
+    global _no_ffmpeg_notice_logged
+    if _no_ffmpeg_notice_logged:
+        return
+    _no_ffmpeg_notice_logged = True
+    logger.info(
+        "FFmpeg PATHda yo‘q — ovoz OGG ko‘rinishida transkripsiya qilinadi. "
+        "Server: apt install -y ffmpeg  yoki  yum install ffmpeg  |  Docker: RUN apt-get install -y ffmpeg"
+    )
+
+
 def _convert_ogg_to_wav(ogg_path: str) -> Optional[str]:
     """
-    Convert OGG file to WAV using ffmpeg
-    Whisper works better with WAV files
+    OGG → WAV (16 kHz mono) — Whisper uchun qulayroq.
+    FFmpeg bo‘lmasa None (caller OGG bilan davom etadi).
     """
+    ffmpeg = _ffmpeg_executable()
+    if not ffmpeg:
+        _log_no_ffmpeg_once()
+        return None
+
     wav_path = ogg_path.replace(".ogg", ".wav")
-    
+
     try:
-        # ffmpeg bilan convert qilish
         result = subprocess.run(
             [
-                "ffmpeg", "-y",  # Overwrite output
-                "-i", ogg_path,  # Input file
-                "-ar", "16000",  # Sample rate 16kHz (Whisper uchun optimal)
-                "-ac", "1",  # Mono channel
-                "-c:a", "pcm_s16le",  # PCM 16-bit
-                wav_path
+                ffmpeg,
+                "-y",
+                "-i",
+                ogg_path,
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-c:a",
+                "pcm_s16le",
+                wav_path,
             ],
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
         )
-        
+
         if result.returncode != 0:
-            logger.error(f"FFmpeg error: {result.stderr}")
+            logger.warning("FFmpeg xatolik: %s", (result.stderr or "")[:500])
             return None
-            
+
         return wav_path
-        
+
     except FileNotFoundError:
-        logger.error("FFmpeg not found. Please install ffmpeg.")
+        _log_no_ffmpeg_once()
         return None
     except subprocess.TimeoutExpired:
-        logger.error("FFmpeg conversion timed out")
+        logger.warning("FFmpeg konvertatsiya vaqti tugadi")
         return None
     except Exception as e:
-        logger.error(f"Audio conversion error: {e}")
+        logger.warning("Audio konvertatsiya: %s", e)
         return None
 
 
