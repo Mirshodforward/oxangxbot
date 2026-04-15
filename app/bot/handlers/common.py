@@ -1,5 +1,5 @@
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import CommandStart, Command
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -83,29 +83,36 @@ Quyidagi tugmalardan foydalanib botni boshqaring:
     if await channel_repo.get_active_channels():
         ok, missing = await check_user_subscription(bot, message.from_user.id, session)
         if not ok:
+            # Inline klaviatura bilan bir xabarda reply-tugmalarni olib tashlab bo'lmaydi
+            await message.answer(
+                "\u2060",
+                reply_markup=ReplyKeyboardRemove(),
+            )
             await message.answer(
                 _subscription_gate_text(),
                 reply_markup=get_subscription_keyboard(missing),
                 parse_mode="HTML",
             )
             return
-    
+
     if is_new_user:
-        # Show language selection for new users
+        await message.answer(
+            "\u2060",
+            reply_markup=ReplyKeyboardRemove(),
+        )
         await message.answer(
             get_language_selection_message(),
             reply_markup=get_language_selection_keyboard(),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
     else:
-        # Show welcome message with user's saved language
         lang = normalize_language_code(db_user.language_code)
         welcome_text = get_text("welcome", lang, name=message.from_user.first_name)
-        
+
         await message.answer(
             welcome_text,
             reply_markup=get_main_menu_keyboard(lang),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
 
 

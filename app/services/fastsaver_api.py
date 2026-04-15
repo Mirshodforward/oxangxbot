@@ -224,13 +224,17 @@ class FastSaverAPI:
     
     async def search_music(self, query: str, page: int = 1) -> tuple[bool, list[MusicSearchResult], Optional[str]]:
         """
-        Search for music on YouTube
-        
+        GET /search-music — query, page (1–3), token.
         Cost: 1 point
-        
-        Returns: (success, results, error_message)
         """
-        params = {"query": query, "page": page}
+        q = (query or "").strip()
+        if not q:
+            return False, [], "Bo'sh qidiruv"
+        try:
+            page = max(1, min(3, int(page)))
+        except (TypeError, ValueError):
+            page = 1
+        params = {"query": q, "page": page}
         data = await self._request("/search-music", params)
         
         if data.get("error", True):
@@ -254,7 +258,13 @@ class FastSaverAPI:
         
         Cost: 5 points
         """
-        data = await self._request("/recognize-music", {"file_url": file_url})
+        fu = (file_url or "").strip()
+        if not fu:
+            return MusicRecognitionResult(
+                error=True,
+                error_message="file_url bo'sh",
+            )
+        data = await self._request("/recognize-music", {"file_url": fu})
         
         if data.get("error", True):
             return MusicRecognitionResult(
@@ -309,6 +319,10 @@ class FastSaverAPI:
         Returns: (success, musics, error_message)
         Note: Falls back to cached top musics if API fails
         """
+        try:
+            page = max(1, min(3, int(page)))
+        except (TypeError, ValueError):
+            page = 1
         params = {"country": country, "page": page}
         data = await self._request("/get-top-musics", params)
         
@@ -327,7 +341,10 @@ class FastSaverAPI:
         
         Returns: (success, lyrics, error_message)
         """
-        data = await self._request("/get-music-lyrics", {"track_url": track_url})
+        tu = (track_url or "").strip()
+        if not tu:
+            return False, None, "track_url bo'sh"
+        data = await self._request("/get-music-lyrics", {"track_url": tu})
         
         if data.get("error", True):
             return False, None, data.get("message", "Lyrics not found")

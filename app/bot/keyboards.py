@@ -45,14 +45,10 @@ def get_language_selection_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_main_menu_keyboard(lang: str = LANG_UZ) -> ReplyKeyboardMarkup:
-    """Asosiy menyu (startdan keyin): faol funksiyalar."""
-    builder = ReplyKeyboardBuilder()
-    builder.row(
-        KeyboardButton(text=get_text("btn_top_music", lang)),
-        KeyboardButton(text=get_text("btn_search_music", lang)),
-    )
-    return builder.as_markup(resize_keyboard=True)
+def get_main_menu_keyboard(lang: str = LANG_UZ) -> ReplyKeyboardRemove:
+    """Musiqa menyusi reply-tugmasiz; /top va /search buyruqlari ishlatiladi."""
+    _ = lang
+    return ReplyKeyboardRemove()
 
 
 def get_settings_keyboard(lang: str = LANG_UZ) -> InlineKeyboardMarkup:
@@ -276,27 +272,41 @@ def get_download_keyboard(lang: str) -> InlineKeyboardMarkup:
 
 
 # ==================== ADMIN KEYBOARDS ====================
+# Reply tugmalar matni handlerlar bilan bir xil bo'lishi shart (faqat admin chatda).
 
-def get_admin_main_keyboard() -> InlineKeyboardMarkup:
-    """Admin panel main keyboard"""
-    builder = InlineKeyboardBuilder()
-    
+ADMIN_REPLY_BTN_STATS = "📊 Statistika"
+ADMIN_REPLY_BTN_USERS = "👥 Foydalanuvchilar"
+ADMIN_REPLY_BTN_BROADCAST = "📢 Post yuborish"
+ADMIN_REPLY_BTN_CHANNELS = "📣 Majburiy obuna"
+ADMIN_REPLY_BTN_CACHE = "🗄️ Kesh statistikasi"
+ADMIN_REPLY_BTN_REFRESH = "🔄 Yangilash"
+
+ADMIN_MAIN_REPLY_TEXTS: frozenset[str] = frozenset(
+    {
+        ADMIN_REPLY_BTN_STATS,
+        ADMIN_REPLY_BTN_USERS,
+        ADMIN_REPLY_BTN_BROADCAST,
+        ADMIN_REPLY_BTN_CHANNELS,
+        ADMIN_REPLY_BTN_CACHE,
+        ADMIN_REPLY_BTN_REFRESH,
+    }
+)
+
+
+def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
+    """Admin panel asosiy tugmalari (pastdagi reply keyboard, faqat admin uchun)."""
+    builder = ReplyKeyboardBuilder()
     builder.row(
-        InlineKeyboardButton(text="📊 Statistika", callback_data="admin:stats"),
-        InlineKeyboardButton(text="👥 Foydalanuvchilar", callback_data="admin:users")
+        KeyboardButton(text=ADMIN_REPLY_BTN_STATS),
+        KeyboardButton(text=ADMIN_REPLY_BTN_USERS),
     )
     builder.row(
-        InlineKeyboardButton(text="📢 Post yuborish", callback_data="admin:broadcast"),
-        InlineKeyboardButton(text="📣 Majburiy obuna", callback_data="admin:channels")
+        KeyboardButton(text=ADMIN_REPLY_BTN_BROADCAST),
+        KeyboardButton(text=ADMIN_REPLY_BTN_CHANNELS),
     )
-    builder.row(
-        InlineKeyboardButton(text="🗄 Kesh statistikasi", callback_data="admin:cache")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔄 Yangilash", callback_data="admin:refresh")
-    )
-    
-    return builder.as_markup()
+    builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_CACHE))
+    builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_REFRESH))
+    return builder.as_markup(resize_keyboard=True)
 
 
 def get_broadcast_keyboard() -> InlineKeyboardMarkup:

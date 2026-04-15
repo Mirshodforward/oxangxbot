@@ -1,12 +1,13 @@
 import logging
+import re
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command, CommandObject, BaseFilter, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.fastsaver_api import api
+from app.services.fastsaver_api import api, MusicSearchResult
 from app.database.models import User
 from app.database.repositories import MusicRepository, MusicSearchCacheRepository, CacheStatsRepository
 from app.bot.keyboards import (
@@ -31,6 +32,67 @@ class MusicStates(StatesGroup):
     """FSM states for music features"""
     waiting_for_audio = State()
     waiting_for_search_query = State()
+
+
+_LANGS = (LANG_UZ, LANG_UZ_CYRL, LANG_RU, LANG_EN)
+
+
+def _menu_texts_for(*keys: str) -> frozenset[str]:
+    texts: set[str] = set()
+    for key in keys:
+        for lg in _LANGS:
+            texts.add(get_text(key, lg))
+    return frozenset(texts)
+
+
+# Oddiy matn qidiruvi: menyu tugmalari va buyruqlar bilan aralashmasin
+_PLAIN_MUSIC_SEARCH_EXCLUDED_TEXTS: frozenset[str] = _menu_texts_for(
+    "btn_help",
+    "btn_statistics",
+    "btn_settings",
+    "btn_cancel",
+    "btn_shazam",
+    "btn_top_music",
+    "btn_search_music",
+)
+
+
+def _normalize_search_query(raw: str) -> str:
+    s = (raw or "").strip()
+    return re.sub(r"\s+", " ", s)
+
+
+def _cached_rows_to_results(rows: list[dict]) -> list[MusicSearchResult]:
+    return [
+        MusicSearchResult(
+            title=d.get("title", "") or "",
+            shortcode=d.get("shortcode", "") or "",
+            duration=d.get("duration", "") or "",
+            thumb=d.get("thumb", "") or "",
+            thumb_best=d.get("thumb_best"),
+        )
+        for d in rows
+    ]
+
+
+class PlainTextMusicSearchFilter(BaseFilter):
+    """Havola/buyruq emas, qisqa matn — musiqa qidiruvi (/search bilan bir xil API)."""
+
+    async def __call__(self, message: Message) -> bool:
+        raw = message.text
+        if not raw or not isinstance(raw, str):
+            return False
+        t = _normalize_search_query(raw)
+        if len(t) < 2:
+            return False
+        if t.startswith("/"):
+            return False
+        low = t.lower()
+        if "http://" in low or "https://" in low or "t.me/" in low:
+            return False
+        if t in _PLAIN_MUSIC_SEARCH_EXCLUDED_TEXTS:
+            return False
+        return True
 
 
 # ==================== SHAZAM ====================
@@ -162,7 +224,7 @@ async def _recognize_from_file(
 
 @router.message(Command("search", "s"))
 async def cmd_search(message: Message, command: CommandObject, state: FSMContext, session: AsyncSession, db_user: User):
-    """Search music - /search <query> or /s <query>"""
+    """Musiqa qidiruv — /search yoki /s [so'z]"""
     lang = normalize_language_code(db_user.language_code)
     
     if not command.args:
@@ -175,25 +237,8 @@ async def cmd_search(message: Message, command: CommandObject, state: FSMContext
         )
         return
     
-    # Query provided, search directly
-    query = command.args.strip()
+    query = _normalize_search_query(command.args)
     await _search_music(message, query, session, db_user, page=1)
-
-
-@router.message(F.text.in_({get_text("btn_search_music", LANG_UZ),
-                            get_text("btn_search_music", LANG_UZ_CYRL),
-                            get_text("btn_search_music", LANG_RU),
-                            get_text("btn_search_music", LANG_EN)}))
-async def btn_search_music(message: Message, state: FSMContext, db_user: User):
-    """Start music search via button"""
-    lang = normalize_language_code(db_user.language_code)
-    await state.set_state(MusicStates.waiting_for_search_query)
-    
-    await message.answer(
-        get_text("search_enter_query", lang),
-        reply_markup=get_cancel_keyboard(lang),
-        parse_mode="HTML"
-    )
 
 
 @router.message(MusicStates.waiting_for_search_query, F.text)
@@ -211,15 +256,16 @@ async def process_search_query(message: Message, state: FSMContext, session: Asy
         return
     
     await state.clear()
-    
-    query = message.text.strip()
+
+    query = _normalize_search_query(message.text)
     await _search_music(message, query, session, db_user, page=1)
 
 
 async def _search_music(message: Message, query: str, session: AsyncSession, db_user: User, page: int = 1):
-    """Common function to search music - WITH CACHING"""
+    """Musiqa qidiruvi — GET /search-music (query, page 1–3), kesh."""
+    query = _normalize_search_query(query)
     lang = normalize_language_code(db_user.language_code)
-    
+
     if len(query) < 2:
         await message.answer(
             get_text("search_no_results", lang),
@@ -237,13 +283,13 @@ async def _search_music(message: Message, query: str, session: AsyncSession, db_
     
     try:
         # 🚀 CHECK CACHE FIRST - saves 1 point per hit
-        cached_results = await cache_repo.get_cached_results(query, page)
-        
-        if cached_results:
-            # CACHE HIT!
+        cached_raw = await cache_repo.get_cached_results(query, page)
+
+        if cached_raw:
             await stats_repo.log_cache_hit("music", 1)
             logger.info(f"Music search cache hit: query='{query}', page={page}")
-            
+
+            cached_results = _cached_rows_to_results(cached_raw)
             keyboard = get_music_results_keyboard(cached_results, page=page, query=query)
             text = f"""🔍 <b>{get_text("search_results", lang)}</b> "{query}"
 
@@ -301,20 +347,22 @@ async def music_search_pagination(callback: CallbackQuery, session: AsyncSession
         return
     
     _, page_str, query = parts
-    page = int(page_str)
-    
-    # Initialize repositories
+    try:
+        page = max(1, min(3, int(page_str)))
+    except (TypeError, ValueError):
+        page = 1
+    query = _normalize_search_query(query)
+
     cache_repo = MusicSearchCacheRepository(session)
     stats_repo = CacheStatsRepository(session)
-    
+
     try:
-        # 🚀 CHECK CACHE FIRST
-        cached_results = await cache_repo.get_cached_results(query, page)
-        
-        if cached_results:
-            # CACHE HIT!
+        cached_raw = await cache_repo.get_cached_results(query, page)
+
+        if cached_raw:
             await stats_repo.log_cache_hit("music", 1)
-            
+
+            cached_results = _cached_rows_to_results(cached_raw)
             keyboard = get_music_results_keyboard(cached_results, page=page, query=query)
             text = f"""🔍 <b>{get_text("search_results", lang)}</b> "{query}"
 
@@ -361,37 +409,28 @@ async def music_search_pagination(callback: CallbackQuery, session: AsyncSession
 
 @router.message(Command("top"))
 async def cmd_top(message: Message, command: CommandObject, db_user: User):
-    """Show top musics - /top [country]
-    
-    Countries: world, UZ, RU, US, GB, TR
-    """
+    """Top musiqalar — /top (mamlakat tanlash) yoki /top UZ|RU|..."""
     lang = normalize_language_code(db_user.language_code)
-    
-    # Check if country provided
-    country = "world"
-    if command.args:
-        country = command.args.strip().upper()
-        if country not in ["WORLD", "UZ", "RU", "US", "GB", "TR"]:
-            country = "world"
-        if country == "WORLD":
-            country = "world"
-    
-    await _show_top_musics(message, country, db_user, page=1)
 
-
-@router.message(F.text.in_({get_text("btn_top_music", LANG_UZ),
-                            get_text("btn_top_music", LANG_UZ_CYRL),
-                            get_text("btn_top_music", LANG_RU),
-                            get_text("btn_top_music", LANG_EN)}))
-async def btn_top_music(message: Message, db_user: User):
-    """Show top musics country selection via button"""
-    lang = normalize_language_code(db_user.language_code)
-    
-    text = f"""🔝 <b>{get_text("btn_top_music", lang)}</b>
+    if not command.args:
+        text = f"""🔝 <b>{get_text("btn_top_music", lang)}</b>
 
 🌍 Select country:
 """
-    await message.answer(text, reply_markup=get_country_selection_keyboard(), parse_mode="HTML")
+        await message.answer(
+            text,
+            reply_markup=get_country_selection_keyboard(),
+            parse_mode="HTML",
+        )
+        return
+
+    country = command.args.strip().upper()
+    if country not in ["WORLD", "UZ", "RU", "US", "GB", "TR"]:
+        country = "world"
+    if country == "WORLD":
+        country = "world"
+
+    await _show_top_musics(message, country, db_user, page=1)
 
 
 async def _show_top_musics(message: Message, country: str, db_user: User, page: int = 1):
@@ -586,59 +625,19 @@ async def _get_lyrics(message: Message, track_url: str, db_user: User, edit: boo
         logger.error(f"Lyrics error: {e}")
         await message.answer(get_text("error", lang))
 
-@router.message(Command("lyrics"))
-async def cmd_lyrics(message: Message, command: CommandObject, db_user: User):
-    """Get lyrics - /lyrics <track_url>"""
-    lang = normalize_language_code(db_user.language_code)
-    
-    if not command.args:
-        await message.answer(
-            "Usage: /lyrics <shazam_track_url>\n\nExample:\n/lyrics https://www.shazam.com/track/316840701/...",
-            parse_mode="HTML"
-        )
-        return
-    
-    track_url = command.args.strip()
-    await _get_lyrics(message, track_url, db_user)
+
+# ==================== PLAIN TEXT SEARCH (chatga to'g'ridan-to'g'ri yozish) ====================
 
 
-@router.callback_query(F.data.startswith("lyrics:"))
-async def callback_lyrics(callback: CallbackQuery, db_user: User):
-    """Get and show lyrics from callback"""
-    await callback.answer(get_text("downloading", normalize_language_code(db_user.language_code)))
-    
-    # The track_url is in callback data
-    track_url = callback.data.split(":", 1)[1]
-    await _get_lyrics(callback.message, track_url, db_user, edit=False)
-
-
-async def _get_lyrics(message: Message, track_url: str, db_user: User, edit: bool = False):
-    """Common function to get lyrics"""
-    lang = normalize_language_code(db_user.language_code)
-    
-    try:
-        success, lyrics, error = await api.get_music_lyrics(track_url)
-        
-        if not success or not lyrics:
-            text = get_text("search_no_results", lang)
-            if edit:
-                await message.edit_text(text)
-            else:
-                await message.answer(text)
-            return
-        
-        # Format lyrics
-        lyrics_text = f"📝 <b>Lyrics:</b>\n\n{lyrics}"
-        
-        # Split if too long (Telegram limit is 4096)
-        if len(lyrics_text) > 4000:
-            parts = [lyrics_text[i:i+4000] for i in range(0, len(lyrics_text), 4000)]
-            for part in parts:
-                await message.answer(part, parse_mode="HTML")
-        else:
-            await message.answer(lyrics_text, parse_mode="HTML")
-            
-    except Exception as e:
-        logger.error(f"Lyrics error: {e}")
-        await message.answer(get_text("error", lang))
-import logging
+@router.message(
+    PlainTextMusicSearchFilter(),
+    ~StateFilter(MusicStates.waiting_for_audio, MusicStates.waiting_for_search_query),
+)
+async def plain_text_music_search(
+    message: Message,
+    session: AsyncSession,
+    db_user: User,
+):
+    """Masalan: «Ummon» — /search bilan bir xil /search-music API."""
+    query = _normalize_search_query(message.text)
+    await _search_music(message, query, session, db_user, page=1)

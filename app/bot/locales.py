@@ -72,6 +72,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 • Qo'shiq matni
 • Ovozli xabar, video, audio orqali aniqlash
 
+🎶 <b>Top va qidiruv:</b> <code>/top</code> — top-chart; <code>/search</code> yoki <code>/s</code> — musiqa qidiruvi.
+🔍 Shuningdek, chatga to'g'ridan qo'shiq yoki ijrochi nomini yozishingiz mumkin (masalan: <code>Ummon</code>).
+
 🚀 <b>Boshlash uchun:</b> shunchaki media havolasini yuboring!""",
         
         LANG_UZ_CYRL: """👋 Салом, {name}!
@@ -91,6 +94,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 • Қўшиқ номи ёки ижрочи исми
 • Қўшиқ матни
 • Овозли хабар, видео, аудио орқали аниқлаш
+
+🎶 <b>Топ ва қидирув:</b> <code>/top</code> — топ чарт; <code>/search</code> ёки <code>/s</code> — мусиқа қидируви.
+🔍 Шунингдек, чатга тўғридан қўшиқ ёки ижрочи номини ёзишингиз мумкин (масалан: <code>Ummon</code>).
 
 🚀 <b>Бошлаш учун:</b> шунчаки медиа ҳаволасини юборинг!""",
         
@@ -112,6 +118,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 • Текст песни
 • Распознавание через голосовое сообщение, видео, аудио
 
+🎶 <b>Топ и поиск:</b> <code>/top</code> — чарт; <code>/search</code> или <code>/s</code> — поиск музыки.
+🔍 Также можно просто написать в чат название трека или артиста (например: <code>Ummon</code>).
+
 🚀 <b>Для начала:</b> просто отправьте ссылку на медиа!""",
         
         LANG_EN: """👋 Hello, {name}!
@@ -131,6 +140,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 • Song title or artist name
 • Song lyrics
 • Recognition via voice message, video, audio
+
+🎶 <b>Top & search:</b> <code>/top</code> — charts; <code>/search</code> or <code>/s</code> — music search.
+🔍 You can also type a song or artist name in the chat (e.g. <code>Ummon</code>).
 
 🚀 <b>To start:</b> just send a media link!"""
     },

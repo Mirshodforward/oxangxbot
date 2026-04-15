@@ -53,7 +53,7 @@ async def on_startup(bot: Bot):
             BotCommand(command="start", description="Botni ishga tushirish (Start bot)"),
             BotCommand(command="help", description="Yordam va qoidalar (Help)"),
             BotCommand(command="shazam", description="Qo'shiqni aniqlash (Identify song)"),
-            BotCommand(command="search", description="Musiqa qidirish (Search music)"),
+            BotCommand(command="search", description="Musiqa qidirish yoki chatga yozing (Search)"),
             BotCommand(command="top", description="Top musiqalar (Top charts)"),
             BotCommand(command="stats", description="Bot statistikasi (Statistics)"),
             BotCommand(command="language", description="Tilni o'zgartirish (Change language)"),

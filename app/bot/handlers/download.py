@@ -12,7 +12,7 @@ from app.database.repositories import (
     YouTubeCacheRepository, CacheStatsRepository
 )
 from app.bot.locales import get_text, normalize_language_code
-from app.bot.keyboards import get_youtube_quality_keyboard, get_main_menu_keyboard, get_download_keyboard
+from app.bot.keyboards import get_youtube_quality_keyboard, get_download_keyboard
 from app.utils.helpers import (
     detect_platform,
     is_valid_url,

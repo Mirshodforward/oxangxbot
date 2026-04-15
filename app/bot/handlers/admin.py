@@ -6,15 +6,16 @@ import asyncio
 from typing import Optional
 
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
 from aiogram.enums import ChatMemberStatus, ParseMode
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.utils.text_decorations import html_decoration
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.utils.helpers import safe_callback_answer
 from app.database.models import User
 from app.database.repositories import (
     AdminRepository,
@@ -28,6 +29,13 @@ from app.database.repositories import (
     MaxRequiredChannelsError,
 )
 from app.bot.keyboards import (
+    ADMIN_MAIN_REPLY_TEXTS,
+    ADMIN_REPLY_BTN_BROADCAST,
+    ADMIN_REPLY_BTN_CACHE,
+    ADMIN_REPLY_BTN_CHANNELS,
+    ADMIN_REPLY_BTN_REFRESH,
+    ADMIN_REPLY_BTN_STATS,
+    ADMIN_REPLY_BTN_USERS,
     get_admin_main_keyboard,
     get_broadcast_keyboard,
     get_channels_keyboard,
@@ -73,6 +81,10 @@ def is_admin(user_id: int) -> bool:
     return user_id in settings.ADMIN_IDS
 
 
+# Inline klaviaturani xabardan olib tashlash (reply keyboard Telegramda edit bilan berilmaydi)
+_CLEAR_INLINE = InlineKeyboardMarkup(inline_keyboard=[])
+
+
 # ==================== ADMIN PANEL ====================
 
 @router.message(Command("admin"))
@@ -96,8 +108,8 @@ Botni boshqarish uchun quyidagi tugmalardan foydalaning:
 📣 <b>Majburiy obuna</b> - Kanallar boshqaruvi
 """
     
-    if edit and hasattr(message, 'edit_text'):
-        await message.edit_text(text, reply_markup=get_admin_main_keyboard(), parse_mode="HTML")
+    if edit and hasattr(message, "edit_text"):
+        await message.edit_text(text, reply_markup=_CLEAR_INLINE, parse_mode="HTML")
     else:
         await message.answer(text, reply_markup=get_admin_main_keyboard(), parse_mode="HTML")
 
@@ -106,116 +118,50 @@ Botni boshqarish uchun quyidagi tugmalardan foydalaning:
 async def admin_back(callback: CallbackQuery, state: FSMContext):
     """Back to admin panel"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     await state.clear()
     await show_admin_panel(callback.message, edit=True)
-    await callback.answer()
-
-
-@router.callback_query(F.data == "admin:refresh")
-async def admin_refresh(callback: CallbackQuery, session: AsyncSession):
-    """Refresh admin panel with updated stats"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
-        return
-    
-    admin_repo = AdminRepository(session)
-    stats = await admin_repo.get_stats()
-    
-    text = f"""🔐 <b>Admin Panel</b>
-
-📊 <b>Tezkor statistika:</b>
-├ 👥 Jami userlar: <b>{stats['total_users']}</b>
-├ 🟢 Faol (24s): <b>{stats['active_24h']}</b>
-├ 📥 Bugungi yuklashlar: <b>{stats['downloads_today']}</b>
-└ 🆕 Bugun yangi: <b>{stats['new_today']}</b>
-"""
-    
-    await callback.message.edit_text(text, reply_markup=get_admin_main_keyboard(), parse_mode="HTML")
-    await callback.answer("✅ Yangilandi")
-
-
-# ==================== STATISTICS ====================
-
-@router.callback_query(F.data == "admin:stats")
-async def admin_stats(callback: CallbackQuery, session: AsyncSession):
-    """Show detailed statistics"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
-        return
-    
-    admin_repo = AdminRepository(session)
-    stats = await admin_repo.get_stats()
-    
-    text = f"""📊 <b>Bot Statistikasi</b>
-
-👥 <b>Foydalanuvchilar:</b>
-├ Jami: <b>{stats['total_users']}</b>
-├ Username'i borlar: <b>{stats['users_with_username']}</b>
-├ Faol (24 soat): <b>{stats['active_24h']}</b>
-├ Faol (7 kun): <b>{stats['active_7d']}</b>
-└ Faol (30 kun): <b>{stats['active_30d']}</b>
-
-🆕 <b>Yangi userlar:</b>
-├ Bugun: <b>{stats['new_today']}</b>
-└ Shu hafta: <b>{stats['new_this_week']}</b>
-
-📥 <b>Yuklashlar:</b>
-├ Jami: <b>{stats['total_downloads']}</b>
-└ Bugun: <b>{stats['downloads_today']}</b>
-
-🎵 <b>Shazam:</b>
-└ Jami: <b>{stats['total_shazams']}</b>
-"""
-    
-    await callback.message.edit_text(text, reply_markup=get_admin_back_keyboard(), parse_mode="HTML")
-    await callback.answer()
+    await safe_callback_answer(callback)
 
 
 # ==================== CACHE STATISTICS ====================
 
-@router.message(Command("cache"))
-async def cmd_cache_stats(message: Message, session: AsyncSession):
-    """Show cache statistics - how many points saved"""
-    if not is_admin(message.from_user.id):
-        return
-    
+async def build_full_cache_stats_html(session: AsyncSession) -> str:
+    """To'liq kesh statistikasi matni (/cache va admin tugmasi uchun)."""
     stats_repo = CacheStatsRepository(session)
     yt_cache_repo = YouTubeCacheRepository(session)
     music_cache_repo = MusicSearchCacheRepository(session)
     cache_repo = CacheRepository(session)
-    
-    # Get all stats
+
     total_stats = await stats_repo.get_total_stats()
     today_stats = await stats_repo.get_today_stats()
-    
+
     yt_hits = await yt_cache_repo.get_total_hits()
     yt_saved = await yt_cache_repo.get_points_saved()
     music_hits = await music_cache_repo.get_total_hits()
     media_hits = await cache_repo.get_total_hits()
-    
-    # Calculate totals
+
     total_api_calls = (
-        total_stats["api_calls"]["media"] +
-        total_stats["api_calls"]["music"] +
-        total_stats["api_calls"]["youtube"] +
-        total_stats["api_calls"]["recognize"]
+        total_stats["api_calls"]["media"]
+        + total_stats["api_calls"]["music"]
+        + total_stats["api_calls"]["youtube"]
+        + total_stats["api_calls"]["recognize"]
     )
-    
+
     total_cache_hits = (
-        total_stats["cache_hits"]["media"] +
-        total_stats["cache_hits"]["music"] +
-        total_stats["cache_hits"]["youtube"] +
-        total_stats["cache_hits"]["recognize"]
+        total_stats["cache_hits"]["media"]
+        + total_stats["cache_hits"]["music"]
+        + total_stats["cache_hits"]["youtube"]
+        + total_stats["cache_hits"]["recognize"]
     )
-    
-    efficiency = 0
+
+    efficiency = 0.0
     if total_api_calls + total_cache_hits > 0:
         efficiency = (total_cache_hits / (total_api_calls + total_cache_hits)) * 100
-    
-    text = f"""💾 <b>Kesh Statistikasi</b>
+
+    return f"""💾 <b>Kesh Statistikasi</b>
 
 📊 <b>Bugungi natijalar:</b>
 ├ API so'rovlar: <b>{today_stats.api_calls_media + today_stats.api_calls_music + today_stats.api_calls_youtube}</b>
@@ -242,75 +188,26 @@ async def cmd_cache_stats(message: Message, session: AsyncSession):
 
 💡 <i>Kesh tizimi har bir takroriy so'rovda API pointlarni tejaydi!</i>
 """
-    
+
+
+@router.message(Command("cache"))
+async def cmd_cache_stats(message: Message, session: AsyncSession):
+    """Show cache statistics - how many points saved"""
+    if not is_admin(message.from_user.id):
+        return
+
+    text = await build_full_cache_stats_html(session)
     await message.answer(text, parse_mode="HTML")
 
 
-@router.callback_query(F.data == "admin:cache")
-async def admin_cache_stats(callback: CallbackQuery, session: AsyncSession):
-    """Show cache statistics via callback"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
-        return
-    
-    stats_repo = CacheStatsRepository(session)
-    yt_cache_repo = YouTubeCacheRepository(session)
-    
-    total_stats = await stats_repo.get_total_stats()
-    today_stats = await stats_repo.get_today_stats()
-    yt_saved = await yt_cache_repo.get_points_saved()
-    
-    total_saved = total_stats['points_saved']
-    total_spent = total_stats['points_spent']
-    
-    efficiency = 0
-    if total_saved + total_spent > 0:
-        efficiency = (total_saved / (total_saved + total_spent)) * 100
-    
-    text = f"""💾 <b>Kesh Statistikasi</b>
-
-📊 <b>Bugun:</b>
-├ Sarflangan: <b>{today_stats.points_spent}</b> pt
-└ Tejalgan: <b>{today_stats.points_saved}</b> pt ✅
-
-📈 <b>Jami:</b>
-├ Sarflangan: <b>{total_spent}</b> points
-├ Tejalgan: <b>{total_saved}</b> points 💰
-└ Effektivlik: <b>{efficiency:.1f}%</b>
-
-🎬 <b>YouTube:</b>
-└ Tejalgan: <b>{yt_saved}</b> points 🔥
-
-💡 <i>Kesh avtomatik ishlaydi!</i>
-"""
-    
-    await callback.message.edit_text(text, reply_markup=get_admin_back_keyboard(), parse_mode="HTML")
-    await callback.answer()
-
-
 # ==================== USERS ANALYTICS ====================
-
-@router.callback_query(F.data == "admin:users")
-async def admin_users(callback: CallbackQuery):
-    """Users analytics menu"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
-        return
-    
-    text = """👥 <b>Foydalanuvchilar analitikasi</b>
-
-Quyidagi parametrlar bo'yicha ma'lumot olishingiz mumkin:
-"""
-    
-    await callback.message.edit_text(text, reply_markup=get_users_keyboard(), parse_mode="HTML")
-    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("users:"))
 async def users_analytics(callback: CallbackQuery, session: AsyncSession):
     """Detailed user analytics"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     action = callback.data.split(":")[1]
@@ -351,7 +248,7 @@ Jami ro'yxatdagi userlar: <b>{stats['total_users']}</b>
 """
     
     await callback.message.edit_text(text, reply_markup=get_users_keyboard(), parse_mode="HTML")
-    await callback.answer()
+    await safe_callback_answer(callback)
 
 
 # ==================== BROADCAST ====================
@@ -360,35 +257,11 @@ Jami ro'yxatdagi userlar: <b>{stats['total_users']}</b>
 broadcast_data = {}
 
 
-@router.callback_query(F.data == "admin:broadcast")
-async def admin_broadcast(callback: CallbackQuery):
-    """Broadcast menu"""
-    if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
-        return
-    
-    text = """📢 <b>Broadcast - Xabar yuborish</b>
-
-Xabar turini tanlang:
-• 📝 <b>Matn</b> - faqat matn xabari
-• 🖼 <b>Media + Matn</b> - rasm yoki video + caption
-
-Yuborish usulini tanlang:
-• 👥 <b>Hammaga</b> - barcha userlarga
-• 🔢 <b>N ta userga</b> - belgilangan songa
-
-💡 <i>HTML formatlash qo'llab-quvvatlanadi</i>
-"""
-    
-    await callback.message.edit_text(text, reply_markup=get_broadcast_keyboard(), parse_mode="HTML")
-    await callback.answer()
-
-
 @router.callback_query(F.data == "broadcast:text")
 async def broadcast_text_start(callback: CallbackQuery, state: FSMContext):
     """Start text broadcast"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     await state.set_state(AdminStates.waiting_broadcast_text)
@@ -399,14 +272,14 @@ async def broadcast_text_start(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_admin_back_keyboard(),
         parse_mode="HTML"
     )
-    await callback.answer()
+    await safe_callback_answer(callback)
 
 
 @router.callback_query(F.data == "broadcast:photo")
 async def broadcast_photo_start(callback: CallbackQuery, state: FSMContext):
     """Start photo/video broadcast"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     await state.set_state(AdminStates.waiting_broadcast_photo)
@@ -419,7 +292,7 @@ async def broadcast_photo_start(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_admin_back_keyboard(),
         parse_mode="HTML"
     )
-    await callback.answer()
+    await safe_callback_answer(callback)
 
 
 @router.message(AdminStates.waiting_broadcast_text, F.text)
@@ -504,25 +377,25 @@ async def receive_broadcast_video(message: Message, state: FSMContext, session: 
 async def broadcast_all(callback: CallbackQuery, session: AsyncSession):
     """Set broadcast to all users"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     if callback.from_user.id not in broadcast_data:
-        await callback.answer("Avval xabar turini tanlang!", show_alert=True)
+        await safe_callback_answer(callback,"Avval xabar turini tanlang!", show_alert=True)
         return
     
     broadcast_data[callback.from_user.id]["limit"] = None
     admin_repo = AdminRepository(session)
     user_count = len(await admin_repo.get_all_user_ids())
     
-    await callback.answer(f"✅ {user_count} ta userga yuboriladi")
+    await safe_callback_answer(callback,f"✅ {user_count} ta userga yuboriladi")
 
 
 @router.callback_query(F.data == "broadcast:limited")
 async def broadcast_limited(callback: CallbackQuery, state: FSMContext):
     """Set limited broadcast"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     await state.set_state(AdminStates.waiting_broadcast_count)
@@ -532,7 +405,7 @@ async def broadcast_limited(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_admin_back_keyboard(),
         parse_mode="HTML"
     )
-    await callback.answer()
+    await safe_callback_answer(callback)
 
 
 @router.message(AdminStates.waiting_broadcast_count, F.text)
@@ -570,15 +443,15 @@ Endi xabar turini tanlang va xabar yuboring.
 async def broadcast_confirm(callback: CallbackQuery, bot: Bot, session: AsyncSession):
     """Confirm and start broadcast - optimized for 100k+ users"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     data = broadcast_data.get(callback.from_user.id)
     if not data:
-        await callback.answer("❌ Xabar topilmadi", show_alert=True)
+        await safe_callback_answer(callback,"❌ Xabar topilmadi", show_alert=True)
         return
     
-    await callback.answer("🚀 Broadcast boshlandi...")
+    await safe_callback_answer(callback,"🚀 Broadcast boshlandi...")
     
     # Get users
     admin_repo = AdminRepository(session)
@@ -754,14 +627,14 @@ async def broadcast_cancel(callback: CallbackQuery, state: FSMContext):
         del broadcast_data[callback.from_user.id]
     
     await show_admin_panel(callback.message, edit=True)
-    await callback.answer("❌ Bekor qilindi")
+    await safe_callback_answer(callback,"❌ Bekor qilindi")
 
 
 @router.callback_query(F.data == "broadcast:history")
 async def broadcast_history(callback: CallbackQuery, session: AsyncSession):
     """Show broadcast history"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     broadcast_repo = BroadcastRepository(session)
@@ -780,7 +653,7 @@ async def broadcast_history(callback: CallbackQuery, session: AsyncSession):
             )
     
     await callback.message.edit_text(text, reply_markup=get_admin_back_keyboard(), parse_mode="HTML")
-    await callback.answer()
+    await safe_callback_answer(callback)
 
 
 # ==================== REQUIRED CHANNELS ====================
@@ -802,8 +675,10 @@ Foydalanuvchi botdan foydalanishi uchun <b>barcha faol</b> kanal va guruhlarga a
 async def admin_channels(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
     """Manage required channels"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
+    
+    await safe_callback_answer(callback)
     
     channel_repo = ChannelRepository(session)
     channels = await channel_repo.get_all_channels()
@@ -814,23 +689,24 @@ async def admin_channels(callback: CallbackQuery, state: FSMContext, session: As
         reply_markup=get_channels_keyboard(channels),
         parse_mode="HTML"
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "channel:add_limit")
 async def channel_add_limit(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
-    await callback.answer("Maksimal 5 ta majburiy kanal/guruh. Avval birini o'chiring.", show_alert=True)
+    await safe_callback_answer(callback,"Maksimal 5 ta majburiy kanal/guruh. Avval birini o'chiring.", show_alert=True)
 
 
 @router.callback_query(F.data == "channel:add")
 async def channel_add(callback: CallbackQuery, state: FSMContext):
     """Majburiy kanal/guruhni @username orqali qo'shish"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
+    
+    await safe_callback_answer(callback)
     
     await state.clear()
     await state.set_state(AdminStates.waiting_channel_username)
@@ -843,7 +719,6 @@ async def channel_add(callback: CallbackQuery, state: FSMContext):
         reply_markup=get_admin_back_keyboard(),
         parse_mode="HTML",
     )
-    await callback.answer()
 
 
 @router.message(AdminStates.waiting_channel_username, F.text)
@@ -920,7 +795,7 @@ async def receive_channel_username(message: Message, bot: Bot, state: FSMContext
 async def channel_toggle(callback: CallbackQuery, session: AsyncSession):
     """Toggle channel active status"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     row_id = int(callback.data.split(":")[2])
@@ -930,7 +805,9 @@ async def channel_toggle(callback: CallbackQuery, session: AsyncSession):
     
     if channel:
         status = "faollashtirildi ✅" if channel.is_active else "o'chirildi ❌"
-        await callback.answer(f"Kanal {status}")
+        await safe_callback_answer(callback,f"Kanal {status}")
+    else:
+        await safe_callback_answer(callback, "❌ Topilmadi", show_alert=True)
     
     channels = await channel_repo.get_all_channels()
     await callback.message.edit_text(
@@ -944,7 +821,7 @@ async def channel_toggle(callback: CallbackQuery, session: AsyncSession):
 async def channel_delete(callback: CallbackQuery, session: AsyncSession):
     """Delete channel"""
     if not is_admin(callback.from_user.id):
-        await callback.answer("❌ Ruxsat yo'q", show_alert=True)
+        await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
     row_id = int(callback.data.split(":")[2])
@@ -953,9 +830,9 @@ async def channel_delete(callback: CallbackQuery, session: AsyncSession):
     success = await channel_repo.remove_channel_by_row_id(row_id)
     
     if success:
-        await callback.answer("🗑 O'chirildi")
+        await safe_callback_answer(callback,"🗑 O'chirildi")
     else:
-        await callback.answer("❌ Topilmadi", show_alert=True)
+        await safe_callback_answer(callback,"❌ Topilmadi", show_alert=True)
     
     channels = await channel_repo.get_all_channels()
     await callback.message.edit_text(
@@ -963,6 +840,106 @@ async def channel_delete(callback: CallbackQuery, session: AsyncSession):
         reply_markup=get_channels_keyboard(channels),
         parse_mode="HTML",
     )
+
+
+# ==================== ADMIN REPLY MENU (pastdagi tugmalar) ====================
+
+
+@router.message(
+    F.from_user.id.in_(settings.ADMIN_IDS),
+    F.text.in_(ADMIN_MAIN_REPLY_TEXTS),
+    ~StateFilter(
+        AdminStates.waiting_broadcast_text,
+        AdminStates.waiting_broadcast_photo,
+        AdminStates.waiting_broadcast_count,
+        AdminStates.waiting_channel_username,
+    ),
+)
+async def admin_main_reply_menu(message: Message, session: AsyncSession):
+    """Admin panel pastdagi reply tugmalari (faqat ADMIN_IDS, FSM kiritish holatida emas)."""
+    label = (message.text or "").strip()
+    admin_repo = AdminRepository(session)
+
+    if label == ADMIN_REPLY_BTN_STATS:
+        stats = await admin_repo.get_stats()
+        text = f"""📊 <b>Bot Statistikasi</b>
+
+👥 <b>Foydalanuvchilar:</b>
+├ Jami: <b>{stats['total_users']}</b>
+├ Username'i borlar: <b>{stats['users_with_username']}</b>
+├ Faol (24 soat): <b>{stats['active_24h']}</b>
+├ Faol (7 kun): <b>{stats['active_7d']}</b>
+└ Faol (30 kun): <b>{stats['active_30d']}</b>
+
+🆕 <b>Yangi userlar:</b>
+├ Bugun: <b>{stats['new_today']}</b>
+└ Shu hafta: <b>{stats['new_this_week']}</b>
+
+📥 <b>Yuklashlar:</b>
+├ Jami: <b>{stats['total_downloads']}</b>
+└ Bugun: <b>{stats['downloads_today']}</b>
+
+🎵 <b>Shazam:</b>
+└ Jami: <b>{stats['total_shazams']}</b>
+"""
+        await message.answer(text, reply_markup=get_admin_back_keyboard(), parse_mode="HTML")
+        return
+
+    if label == ADMIN_REPLY_BTN_REFRESH:
+        stats = await admin_repo.get_stats()
+        text = f"""🔐 <b>Admin Panel</b>
+
+📊 <b>Tezkor statistika:</b>
+├ 👥 Jami userlar: <b>{stats['total_users']}</b>
+├ 🟢 Faol (24s): <b>{stats['active_24h']}</b>
+├ 📥 Bugungi yuklashlar: <b>{stats['downloads_today']}</b>
+└ 🆕 Bugun yangi: <b>{stats['new_today']}</b>
+"""
+        await message.answer(text, reply_markup=get_admin_main_keyboard(), parse_mode="HTML")
+        return
+
+    if label == ADMIN_REPLY_BTN_CACHE:
+        cache_text = await build_full_cache_stats_html(session)
+        await message.answer(
+            cache_text,
+            reply_markup=get_admin_back_keyboard(),
+            parse_mode="HTML",
+        )
+        return
+
+    if label == ADMIN_REPLY_BTN_USERS:
+        text = """👥 <b>Foydalanuvchilar analitikasi</b>
+
+Quyidagi parametrlar bo'yicha ma'lumot olishingiz mumkin:
+"""
+        await message.answer(text, reply_markup=get_users_keyboard(), parse_mode="HTML")
+        return
+
+    if label == ADMIN_REPLY_BTN_BROADCAST:
+        text = """📢 <b>Broadcast - Xabar yuborish</b>
+
+Xabar turini tanlang:
+• 📝 <b>Matn</b> - faqat matn xabari
+• 🖼 <b>Media + Matn</b> - rasm yoki video + caption
+
+Yuborish usulini tanlang:
+• 👥 <b>Hammaga</b> - barcha userlarga
+• 🔢 <b>N ta userga</b> - belgilangan songa
+
+💡 <i>HTML formatlash qo'llab-quvvatlanadi</i>
+"""
+        await message.answer(text, reply_markup=get_broadcast_keyboard(), parse_mode="HTML")
+        return
+
+    if label == ADMIN_REPLY_BTN_CHANNELS:
+        channel_repo = ChannelRepository(session)
+        channels = await channel_repo.get_all_channels()
+        text = _channels_admin_text(channels)
+        await message.answer(
+            text,
+            reply_markup=get_channels_keyboard(channels),
+            parse_mode="HTML",
+        )
 
 
 # ==================== SUBSCRIPTION CHECK ====================
@@ -974,15 +951,15 @@ async def check_subscription_callback(callback: CallbackQuery, bot: Bot, session
     is_subscribed, not_subscribed = await check_user_subscription(bot, callback.from_user.id, session)
     
     if is_subscribed:
+        await safe_callback_answer(callback, "✅ Obuna tasdiqlandi!")
         lang = normalize_language_code(db_user.language_code)
         await callback.message.delete()
         await callback.message.answer(
             "✅ Obuna tasdiqlandi! Endi botdan foydalanishingiz mumkin.",
             reply_markup=get_main_menu_keyboard(lang)
         )
-        await callback.answer("✅ Obuna tasdiqlandi!")
     else:
-        await callback.answer(
+        await safe_callback_answer(callback,
             "❌ Siz hali barcha kanallarga obuna bo'lmagansiz!",
             show_alert=True
         )

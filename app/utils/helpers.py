@@ -173,3 +173,26 @@ def get_platform_name(platform: Platform) -> str:
         Platform.OTHER: "Other",
     }
     return names.get(platform, "Unknown")
+
+
+async def safe_callback_answer(callback, *args, **kwargs) -> None:
+    """
+    Telegram callback.answer() — eski tugma, timeout yoki takroriy javobda
+    «query is too old» xatosini logga chiqarmasdan yutib qo'yadi.
+    """
+    from aiogram.exceptions import TelegramBadRequest
+
+    try:
+        await callback.answer(*args, **kwargs)
+    except TelegramBadRequest as e:
+        msg = (getattr(e, "message", None) or str(e)).lower()
+        if any(
+            s in msg
+            for s in (
+                "query is too old",
+                "query id is invalid",
+                "response timeout expired",
+            )
+        ):
+            return
+        raise
