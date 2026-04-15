@@ -16,8 +16,7 @@ from app.bot.keyboards import (
     get_music_results_keyboard,
     get_top_music_keyboard,
     get_recognized_music_keyboard,
-    get_country_selection_keyboard,
-    get_youtube_quality_keyboard
+    get_youtube_quality_keyboard,
 )
 from app.bot.locales import (
     get_text, LANG_UZ, LANG_UZ_CYRL, LANG_RU, LANG_EN, normalize_language_code
@@ -409,26 +408,14 @@ async def music_search_pagination(callback: CallbackQuery, session: AsyncSession
 
 @router.message(Command("top"))
 async def cmd_top(message: Message, command: CommandObject, db_user: User):
-    """Top musiqalar — /top (mamlakat tanlash) yoki /top UZ|RU|..."""
-    lang = normalize_language_code(db_user.language_code)
-
-    if not command.args:
-        text = f"""🔝 <b>{get_text("btn_top_music", lang)}</b>
-
-🌍 Select country:
-"""
-        await message.answer(
-            text,
-            reply_markup=get_country_selection_keyboard(),
-            parse_mode="HTML",
-        )
-        return
-
-    country = command.args.strip().upper()
-    if country not in ["WORLD", "UZ", "RU", "US", "GB", "TR"]:
-        country = "world"
-    if country == "WORLD":
-        country = "world"
+    """Top musiqalar — /top (dunyo chart); ixtiyoriy: /top UZ|RU|US|GB|TR|world"""
+    country = "world"
+    if command.args:
+        c = command.args.strip().upper()
+        if c == "WORLD":
+            country = "world"
+        elif c in ("UZ", "RU", "US", "GB", "TR"):
+            country = c
 
     await _show_top_musics(message, country, db_user, page=1)
 

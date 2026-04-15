@@ -12,8 +12,9 @@ env/
 venv/
 ENV/
 
-# VS Code
-.vscode/
+# VS Code (workspace sozlamalari commit qilinsin)
+.vscode/*
+!.vscode/settings.json
 
 # PyCharm
 .idea/

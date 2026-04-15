@@ -1,7 +1,9 @@
 import logging
+from typing import Optional
+
 import aiohttp
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, URLInputFile
+from aiogram.types import BufferedInputFile, Message, CallbackQuery, URLInputFile
 from aiogram.enums import ChatAction
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +29,49 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="download")
+
+# Telegram URLInputFile ba'zi CDN (masalan Instagram) uchun 403 beradi — serverda yuklab yuboramiz
+_MAX_REMOTE_MEDIA_BYTES = 80 * 1024 * 1024
+
+
+async def _fetch_url_bytes_for_upload(url: str) -> Optional[bytes]:
+    """Telegram o‘rniga bot serveri orqali havoladan baytlar (403 aylanishi uchun)."""
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    low = url.lower()
+    if "instagram" in low or "fbcdn.net" in low or "cdninstagram" in low:
+        headers["Referer"] = "https://www.instagram.com/"
+        headers["Origin"] = "https://www.instagram.com"
+
+    timeout = aiohttp.ClientTimeout(total=180, sock_read=120)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, headers=headers, allow_redirects=True) as resp:
+                if resp.status != 200:
+                    logger.warning("Remote GET %s -> HTTP %s", url[:120], resp.status)
+                    return None
+                cl = resp.headers.get("Content-Length")
+                if cl:
+                    try:
+                        if int(cl) > _MAX_REMOTE_MEDIA_BYTES:
+                            logger.warning("Remote file too large (Content-Length)")
+                            return None
+                    except ValueError:
+                        pass
+                data = await resp.read()
+                if len(data) > _MAX_REMOTE_MEDIA_BYTES:
+                    logger.warning("Remote file too large (body)")
+                    return None
+                return data
+    except Exception as exc:
+        logger.warning("Remote download error: %s", exc)
+        return None
 
 
 async def send_media_to_user(
@@ -104,36 +149,75 @@ async def send_media_to_user(
         
         media_type = MediaType.VIDEO if media_info.media_type == "video" else MediaType.IMAGE
 
-        # Send typing action
-        await bot.send_chat_action(message.chat.id, ChatAction.UPLOAD_VIDEO)
+        await bot.send_chat_action(
+            message.chat.id,
+            ChatAction.UPLOAD_VIDEO if media_info.media_type == "video" else ChatAction.UPLOAD_PHOTO,
+        )
 
-        # Use URLInputFile for direct upload from URL
-        file = URLInputFile(download_url)
+        file_id = None
+        sent_msg = None
+        upload = URLInputFile(download_url)
 
-        if media_info.media_type == "video":
-            sent_msg = await message.answer_video(
-                video=file,
-                caption=caption_text,
-                reply_markup=keyboard,
-                parse_mode="HTML"
+        try:
+            if media_info.media_type == "video":
+                sent_msg = await message.answer_video(
+                    video=upload,
+                    caption=caption_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                )
+                file_id = sent_msg.video.file_id if sent_msg.video else None
+            elif media_info.media_type == "image":
+                sent_msg = await message.answer_photo(
+                    photo=upload,
+                    caption=caption_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                )
+                file_id = sent_msg.photo[-1].file_id if sent_msg.photo else None
+            else:
+                sent_msg = await message.answer_document(
+                    document=upload,
+                    caption=caption_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                )
+                file_id = sent_msg.document.file_id if sent_msg.document else None
+        except Exception as first_err:
+            logger.warning(
+                "URLInputFile yuborish muvaffaqiyatsiz (%s); server orqali yuklab yuborilmoqda...",
+                first_err,
             )
-            file_id = sent_msg.video.file_id if sent_msg.video else None
-        elif media_info.media_type == "image":
-            sent_msg = await message.answer_photo(
-                photo=file,
-                caption=caption_text,
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
-            file_id = sent_msg.photo[-1].file_id if sent_msg.photo else None
-        else:
-            # Default to document
-            sent_msg = await message.answer_document(
-                document=file,
-                caption=caption_text,
-                reply_markup=keyboard,
-                parse_mode="HTML"
-            )
+            raw = await _fetch_url_bytes_for_upload(download_url)
+            if not raw:
+                raise
+            if media_info.media_type == "video":
+                upload = BufferedInputFile(raw, filename="video.mp4")
+                sent_msg = await message.answer_video(
+                    video=upload,
+                    caption=caption_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                )
+                file_id = sent_msg.video.file_id if sent_msg.video else None
+            elif media_info.media_type == "image":
+                upload = BufferedInputFile(raw, filename="photo.jpg")
+                sent_msg = await message.answer_photo(
+                    photo=upload,
+                    caption=caption_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                )
+                file_id = sent_msg.photo[-1].file_id if sent_msg.photo else None
+            else:
+                upload = BufferedInputFile(raw, filename="media.bin")
+                sent_msg = await message.answer_document(
+                    document=upload,
+                    caption=caption_text,
+                    reply_markup=keyboard,
+                    parse_mode="HTML",
+                )
+                file_id = sent_msg.document.file_id if sent_msg.document else None
         # Cache the file_id
         if file_id:
             await cache_repo.create_or_update(
@@ -199,15 +283,32 @@ async def send_carousel_media(
                 continue
             
             item_type = item.get("type", "image")
-            file = URLInputFile(item_url)
-            
-            if item_type == "video":
-                await message.answer_video(video=file)
-            else:
-                await message.answer_photo(photo=file)
-            
+            upload = URLInputFile(item_url)
+            try:
+                if item_type == "video":
+                    await message.answer_video(video=upload)
+                else:
+                    await message.answer_photo(photo=upload)
+            except Exception as first_err:
+                logger.warning(
+                    "Carousel item %s URLInputFile: %s; server yuklash...",
+                    i + 1,
+                    first_err,
+                )
+                raw = await _fetch_url_bytes_for_upload(item_url)
+                if not raw:
+                    raise
+                if item_type == "video":
+                    await message.answer_video(
+                        video=BufferedInputFile(raw, filename="video.mp4")
+                    )
+                else:
+                    await message.answer_photo(
+                        photo=BufferedInputFile(raw, filename="photo.jpg")
+                    )
+
             success_count += 1
-            
+
         except Exception as e:
             logger.warning(f"Failed to send carousel item {i + 1}: {e}")
     

@@ -96,7 +96,7 @@ def get_media_actions_keyboard(
     url: str,
     has_audio: bool = False,
     platform: str = ""
-) -> InlineKeyboardMarkup:
+) -> Optional[InlineKeyboardMarkup]:
     """Media action buttons (download audio, etc.)"""
     builder = InlineKeyboardBuilder()
     
@@ -279,7 +279,7 @@ ADMIN_REPLY_BTN_USERS = "👥 Foydalanuvchilar"
 ADMIN_REPLY_BTN_BROADCAST = "📢 Post yuborish"
 ADMIN_REPLY_BTN_CHANNELS = "📣 Majburiy obuna"
 ADMIN_REPLY_BTN_CACHE = "🗄️ Kesh statistikasi"
-ADMIN_REPLY_BTN_REFRESH = "🔄 Yangilash"
+
 
 ADMIN_MAIN_REPLY_TEXTS: frozenset[str] = frozenset(
     {
@@ -288,7 +288,7 @@ ADMIN_MAIN_REPLY_TEXTS: frozenset[str] = frozenset(
         ADMIN_REPLY_BTN_BROADCAST,
         ADMIN_REPLY_BTN_CHANNELS,
         ADMIN_REPLY_BTN_CACHE,
-        ADMIN_REPLY_BTN_REFRESH,
+       
     }
 )
 
@@ -305,7 +305,7 @@ def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text=ADMIN_REPLY_BTN_CHANNELS),
     )
     builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_CACHE))
-    builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_REFRESH))
+    
     return builder.as_markup(resize_keyboard=True)
 
 

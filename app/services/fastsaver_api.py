@@ -1,9 +1,9 @@
 import aiohttp
 import asyncio
-from typing import Optional, Any
-from dataclasses import dataclass
-from urllib.parse import urlencode
+import json
 import logging
+from dataclasses import dataclass
+from typing import Optional
 
 from app.config import settings
 
@@ -121,17 +121,32 @@ class FastSaverAPI:
         for attempt in range(retries):
             try:
                 async with session.get(url, params=params) as response:
-                    data = await response.json()
-                    
+                    raw = await response.read()
+                    try:
+                        text = raw.decode("utf-8") if raw else ""
+                        data = json.loads(text) if text.strip() else {}
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        preview = raw[:300] if raw else b""
+                        logger.error(
+                            "API JSON emas: status=%s url=%s body=%r",
+                            response.status,
+                            endpoint,
+                            preview,
+                        )
+                        return {
+                            "error": True,
+                            "message": f"API javobi JSON emas (HTTP {response.status})",
+                        }
+
                     if response.status == 422:
                         logger.error(f"Validation error: {data}")
                         return {"error": True, "message": data.get("detail", "Validation error")}
-                    
+
                     if response.status != 200:
                         logger.error(f"API error {response.status}: {data}")
                         error_msg = data.get("message", f"API error: {response.status}")
                         return {"error": True, "message": error_msg}
-                    
+
                     return data
                     
             except aiohttp.ClientError as e:
