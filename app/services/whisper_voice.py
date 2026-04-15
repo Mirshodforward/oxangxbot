@@ -13,6 +13,22 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+
+def whisper_language_for_bot_ui(ui_lang: str) -> str:
+    """
+    Botdagi til kodini Whisper `language` parametri uchun.
+    Auto-detektsiya o'rniga majburiy til — o'zbek nutqi aniqroq bo'ladi.
+    """
+    code = (ui_lang or "uz").strip().lower()
+    if code in ("uz", "uz_cyrl"):
+        return "uz"
+    if code == "ru":
+        return "ru"
+    if code == "en":
+        return "en"
+    return "uz"
+
+
 _no_ffmpeg_notice_logged = False
 _ffmpeg_checked = False
 _ffmpeg_path: Optional[str] = None
@@ -164,20 +180,23 @@ class WhisperVoiceService:
             self._model = _get_whisper_model()
         return self._model
     
-    async def transcribe_audio(self, audio_path: str) -> Optional[str]:
+    async def transcribe_audio(
+        self,
+        audio_path: str,
+        *,
+        whisper_language: str = "uz",
+    ) -> Optional[str]:
         """
         Transcribe audio file to text using Whisper
-        
+
         Args:
             audio_path: Path to audio file (ogg, mp3, wav, etc.)
-            
-        Returns:
-            Transcribed text or None on error
+            whisper_language: Whisper til kodi (uz, ru, en) — auto-detect emas.
         """
         model = self._get_model()
         if model is None:
             return None
-        
+
         wav_path = None
         try:
             # OGG ni WAV ga convert qilish (agar kerak bo'lsa)
@@ -189,20 +208,29 @@ class WhisperVoiceService:
                 process_path = wav_path
             else:
                 process_path = audio_path
-            
-            # Whisper bilan transkripsiya
-            segments, info = model.transcribe(
-                process_path,
-                language=None,  # Auto-detect language
-                task="transcribe",
-                beam_size=5,
-                best_of=5,
-                vad_filter=True,  # Voice Activity Detection - shovqinni filter qilish
-                vad_parameters=dict(
+
+            transcribe_kw: dict = {
+                "language": whisper_language,
+                "task": "transcribe",
+                "beam_size": 5,
+                "best_of": 5,
+                "vad_filter": True,
+                "vad_parameters": dict(
                     min_silence_duration_ms=500,
-                    speech_pad_ms=400
+                    speech_pad_ms=400,
+                ),
+            }
+            if whisper_language == "uz":
+                transcribe_kw["initial_prompt"] = (
+                    "O'zbek tilidagi nutq. Masalan: musiqa qidirib ber, Ummon, "
+                    "She'niy, qo'shiq, salom, rahmat."
                 )
-            )
+            elif whisper_language == "ru":
+                transcribe_kw["initial_prompt"] = (
+                    "Короткая речь на русском: музыка, песня, найди, включи."
+                )
+
+            segments, info = model.transcribe(process_path, **transcribe_kw)
             
             # Segmentlarni birlashtirish
             text_parts = []
@@ -291,18 +319,23 @@ class WhisperVoiceService:
             confidence=0.8  # Local model - yaxshi ishonch
         )
     
-    async def process_voice_message(self, audio_path: str) -> Optional[VoiceCommand]:
+    async def process_voice_message(
+        self,
+        audio_path: str,
+        *,
+        whisper_language: str = "uz",
+    ) -> Optional[VoiceCommand]:
         """
         Full pipeline: transcribe audio and extract music command
-        
+
         Args:
             audio_path: Path to voice message audio file
-            
-        Returns:
-            VoiceCommand with transcription and parsed intent, or None on error
+            whisper_language: Whisper til kodi (bot UI tilidan keladi).
         """
-        # Step 1: Transcribe
-        transcription = await self.transcribe_audio(audio_path)
+        transcription = await self.transcribe_audio(
+            audio_path,
+            whisper_language=whisper_language,
+        )
         if not transcription:
             return None
         

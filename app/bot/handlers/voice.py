@@ -12,7 +12,10 @@ from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.whisper_voice import get_whisper_voice_service
+from app.services.whisper_voice import (
+    get_whisper_voice_service,
+    whisper_language_for_bot_ui,
+)
 from app.services.fastsaver_api import api
 from app.database.models import User
 from app.bot.keyboards import get_main_menu_keyboard, get_music_results_keyboard
@@ -69,7 +72,11 @@ async def handle_voice_command(
             await bot.download_file(file.file_path, tmp_path)
             
             # Process voice message with local Whisper
-            command = await whisper.process_voice_message(tmp_path)
+            wl = whisper_language_for_bot_ui(lang)
+            command = await whisper.process_voice_message(
+                tmp_path,
+                whisper_language=wl,
+            )
             
             if not command:
                 await status_msg.delete()
