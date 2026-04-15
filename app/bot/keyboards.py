@@ -288,7 +288,6 @@ ADMIN_MAIN_REPLY_TEXTS: frozenset[str] = frozenset(
         ADMIN_REPLY_BTN_BROADCAST,
         ADMIN_REPLY_BTN_CHANNELS,
         ADMIN_REPLY_BTN_CACHE,
-       
     }
 )
 
@@ -305,7 +304,7 @@ def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text=ADMIN_REPLY_BTN_CHANNELS),
     )
     builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_CACHE))
-    
+
     return builder.as_markup(resize_keyboard=True)
 
 

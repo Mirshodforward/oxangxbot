@@ -33,7 +33,6 @@ from app.bot.keyboards import (
     ADMIN_REPLY_BTN_BROADCAST,
     ADMIN_REPLY_BTN_CACHE,
     ADMIN_REPLY_BTN_CHANNELS,
-    ADMIN_REPLY_BTN_REFRESH,
     ADMIN_REPLY_BTN_STATS,
     ADMIN_REPLY_BTN_USERS,
     get_admin_main_keyboard,
@@ -883,19 +882,6 @@ async def admin_main_reply_menu(message: Message, session: AsyncSession):
 └ Jami: <b>{stats['total_shazams']}</b>
 """
         await message.answer(text, reply_markup=get_admin_back_keyboard(), parse_mode="HTML")
-        return
-
-    if label == ADMIN_REPLY_BTN_REFRESH:
-        stats = await admin_repo.get_stats()
-        text = f"""🔐 <b>Admin Panel</b>
-
-📊 <b>Tezkor statistika:</b>
-├ 👥 Jami userlar: <b>{stats['total_users']}</b>
-├ 🟢 Faol (24s): <b>{stats['active_24h']}</b>
-├ 📥 Bugungi yuklashlar: <b>{stats['downloads_today']}</b>
-└ 🆕 Bugun yangi: <b>{stats['new_today']}</b>
-"""
-        await message.answer(text, reply_markup=get_admin_main_keyboard(), parse_mode="HTML")
         return
 
     if label == ADMIN_REPLY_BTN_CACHE:
