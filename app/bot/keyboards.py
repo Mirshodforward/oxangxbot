@@ -187,7 +187,7 @@ def get_top_music_keyboard(
 
 def get_recognized_music_keyboard(
     musics: list[MusicSearchResult],
-    track_url: Optional[str] = None
+    shazam_id: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
     """Keyboard for recognized music results"""
     builder = InlineKeyboardBuilder()
@@ -202,11 +202,11 @@ def get_recognized_music_keyboard(
     
     builder.adjust(1)
     
-    # Add lyrics button if track_url available
-    if track_url:
+    # GET /shazam/lyrics?shazam_id=...
+    if shazam_id:
         builder.row(InlineKeyboardButton(
             text="📝 Matnini ko'rish",
-            callback_data=f"lyrics:{track_url[:50]}"  # Truncate URL for callback
+            callback_data=f"lyrics:{shazam_id}",
         ))
     
     return builder.as_markup()

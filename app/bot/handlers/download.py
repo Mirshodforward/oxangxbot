@@ -17,13 +17,15 @@ from app.bot.locales import get_text, normalize_language_code
 from app.bot.keyboards import get_youtube_quality_keyboard, get_download_keyboard
 from app.utils.helpers import (
     detect_platform,
-    is_valid_url,
     extract_urls,
     extract_youtube_video_id,
     get_url_hash,
     truncate_text,
     get_platform_emoji,
-    get_platform_name
+    get_platform_name,
+    normalize_fetch_url,
+    fetch_media_is_video,
+    fetch_media_is_image,
 )
 from app.config import settings
 
@@ -104,7 +106,7 @@ async def send_media_to_user(
     if cached and cached.file_id:
         try:
             # Send cached file
-            if cached.media_type == MediaType.VIDEO or media_info.media_type == "video":
+            if cached.media_type == MediaType.VIDEO or fetch_media_is_video(media_info.media_type):
                 await message.answer_video(
                     video=cached.file_id,
                     caption=caption_text,
@@ -147,11 +149,13 @@ async def send_media_to_user(
         if not download_url:
             return False
         
-        media_type = MediaType.VIDEO if media_info.media_type == "video" else MediaType.IMAGE
+        media_type = (
+            MediaType.VIDEO if fetch_media_is_video(media_info.media_type) else MediaType.IMAGE
+        )
 
         await bot.send_chat_action(
             message.chat.id,
-            ChatAction.UPLOAD_VIDEO if media_info.media_type == "video" else ChatAction.UPLOAD_PHOTO,
+            ChatAction.UPLOAD_VIDEO if fetch_media_is_video(media_info.media_type) else ChatAction.UPLOAD_PHOTO,
         )
 
         file_id = None
@@ -159,7 +163,7 @@ async def send_media_to_user(
         upload = URLInputFile(download_url)
 
         try:
-            if media_info.media_type == "video":
+            if fetch_media_is_video(media_info.media_type):
                 sent_msg = await message.answer_video(
                     video=upload,
                     caption=caption_text,
@@ -167,7 +171,7 @@ async def send_media_to_user(
                     parse_mode="HTML",
                 )
                 file_id = sent_msg.video.file_id if sent_msg.video else None
-            elif media_info.media_type == "image":
+            elif fetch_media_is_image(media_info.media_type):
                 sent_msg = await message.answer_photo(
                     photo=upload,
                     caption=caption_text,
@@ -191,7 +195,7 @@ async def send_media_to_user(
             raw = await _fetch_url_bytes_for_upload(download_url)
             if not raw:
                 raise
-            if media_info.media_type == "video":
+            if fetch_media_is_video(media_info.media_type):
                 upload = BufferedInputFile(raw, filename="video.mp4")
                 sent_msg = await message.answer_video(
                     video=upload,
@@ -200,7 +204,7 @@ async def send_media_to_user(
                     parse_mode="HTML",
                 )
                 file_id = sent_msg.video.file_id if sent_msg.video else None
-            elif media_info.media_type == "image":
+            elif fetch_media_is_image(media_info.media_type):
                 upload = BufferedInputFile(raw, filename="photo.jpg")
                 sent_msg = await message.answer_photo(
                     photo=upload,
@@ -285,7 +289,7 @@ async def send_carousel_media(
             item_type = item.get("type", "image")
             upload = URLInputFile(item_url)
             try:
-                if item_type == "video":
+                if fetch_media_is_video(str(item_type)):
                     await message.answer_video(video=upload)
                 else:
                     await message.answer_photo(photo=upload)
@@ -298,7 +302,7 @@ async def send_carousel_media(
                 raw = await _fetch_url_bytes_for_upload(item_url)
                 if not raw:
                     raise
-                if item_type == "video":
+                if fetch_media_is_video(str(item_type)):
                     await message.answer_video(
                         video=BufferedInputFile(raw, filename="video.mp4")
                     )
@@ -335,7 +339,7 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
     if not urls:
         return
     
-    url = urls[0]  # Process first URL
+    url = normalize_fetch_url(urls[0])
     platform = detect_platform(url)
     
     logger.info(f"User {db_user.id} requested: {url} (platform: {platform})")
@@ -387,7 +391,7 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
 
 @router.callback_query(F.data.startswith("yt_dl:"))
 async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: AsyncSession, db_user: User):
-    """Handle YouTube download with quality selection - with caching (saves 20 points!)"""
+    """YouTube sifat tanlash — kesh; audio ~7, video ~15 kredit (API bo'yicha)."""
     await callback.answer()
     
     # Parse callback data: yt_dl:video_id:format
@@ -397,6 +401,7 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
         return
     
     _, video_id, format_quality = parts
+    api_credit_cost = 7 if format_quality.lower() == "mp3" else 15
     
     # Initialize repositories
     yt_cache_repo = YouTubeCacheRepository(session)
@@ -404,7 +409,7 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
     download_repo = DownloadRepository(session)
     user_repo = UserRepository(session)
     
-    # 🚀 CHECK CACHE FIRST - saves 20 points!
+    # 🚀 CHECK CACHE FIRST
     cached = await yt_cache_repo.get_cached(video_id, format_quality)
     
     if cached:
@@ -425,8 +430,7 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
             
             await callback.message.delete()
             
-            # Log cache hit - we saved 20 points!
-            await stats_repo.log_cache_hit("youtube", 20)
+            await stats_repo.log_cache_hit("youtube", api_credit_cost)
             
             await download_repo.create(
                 user_id=db_user.id,
@@ -439,14 +443,19 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
             )
             await user_repo.increment_downloads(db_user.id)
             
-            logger.info(f"YouTube cache hit! video_id={video_id}, format={format_quality}, 20 points saved!")
+            logger.info(
+                "YouTube cache hit: video_id=%s format=%s (~%s kredit tejaldi)",
+                video_id,
+                format_quality,
+                api_credit_cost,
+            )
             return
             
         except Exception as e:
             logger.warning(f"Cached file_id expired or invalid: {e}")
             # Continue to API call if cache failed
     
-    # CACHE MISS - need to call API (costs 20 points)
+    # CACHE MISS — API chaqiruvi
     await callback.message.edit_text(f"⏳ YouTube {format_quality} formatda yuklanmoqda...")
     
     try:
@@ -454,15 +463,13 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
         bot_info = await bot.get_me()
         bot_username = f"@{bot_info.username}"
         
-        # Download from API - costs 20 points
         result = await api.download_youtube(
             video_id=video_id,
             format=format_quality,
             bot_username=bot_username
         )
         
-        # Log API call
-        await stats_repo.log_api_call("youtube", 20)
+        await stats_repo.log_api_call("youtube", api_credit_cost)
         
         if result.error:
             await callback.message.edit_text(
@@ -470,41 +477,47 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
             )
             return
         
-        # Send using file_id
+        caption_v = f"▶️ <b>YouTube</b> | {format_quality}"
+        caption_a = "🎵 <b>YouTube</b> | MP3"
+        sent_file_id: Optional[str] = None
+        sent_media = result.media_type
+
         if result.file_id:
             try:
                 if result.media_type == "video":
-                    await callback.message.answer_video(
+                    sent = await callback.message.answer_video(
                         video=result.file_id,
-                        caption=f"▶️ <b>YouTube</b> | {format_quality}",
+                        caption=caption_v,
                         parse_mode="HTML"
                     )
+                    sent_file_id = sent.video.file_id if sent.video else None
                 else:
-                    await callback.message.answer_audio(
+                    sent = await callback.message.answer_audio(
                         audio=result.file_id,
-                        caption=f"🎵 <b>YouTube</b> | MP3",
+                        caption=caption_a,
                         parse_mode="HTML"
                     )
+                    sent_file_id = sent.audio.file_id if sent.audio else None
                 
                 await callback.message.delete()
                 
-                # 💾 CACHE THE RESULT for future requests!
-                await yt_cache_repo.cache_download(
-                    video_id=video_id,
-                    format=format_quality,
-                    file_id=result.file_id,
-                    media_type=result.media_type,
-                    expires_hours=240  # Cache for 10 days
-                )
-                logger.info(f"YouTube cached: video_id={video_id}, format={format_quality}")
+                if sent_file_id:
+                    await yt_cache_repo.cache_download(
+                        video_id=video_id,
+                        format=format_quality,
+                        file_id=sent_file_id,
+                        media_type=sent_media,
+                        expires_hours=240
+                    )
+                    logger.info(f"YouTube cached: video_id={video_id}, format={format_quality}")
                 
                 await download_repo.create(
                     user_id=db_user.id,
                     url=f"https://youtube.com/watch?v={video_id}",
                     platform=Platform.YOUTUBE,
                     shortcode=video_id,
-                    media_type=MediaType.VIDEO if result.media_type == "video" else MediaType.AUDIO,
-                    file_id=result.file_id,
+                    media_type=MediaType.VIDEO if sent_media == "video" else MediaType.AUDIO,
+                    file_id=sent_file_id or result.file_id,
                     is_success=True
                 )
                 await user_repo.increment_downloads(db_user.id)
@@ -514,8 +527,59 @@ async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: 
                 await callback.message.edit_text(
                     "❌ Faylni yuborib bo'lmadi. File_id muddati tugagan bo'lishi mumkin."
                 )
+        elif result.download_url:
+            fn = (result.filename or f"yt_{video_id}_{format_quality}.mp4").replace("\x00", "")
+            if len(fn) > 180:
+                fn = f"{video_id}.mp4"
+            try:
+                upload = URLInputFile(result.download_url, filename=fn)
+                sent = await callback.message.answer_video(
+                    video=upload,
+                    caption=caption_v,
+                    parse_mode="HTML",
+                )
+                sent_file_id = sent.video.file_id if sent.video else None
+            except Exception as first_err:
+                logger.warning(
+                    "YouTube URLInputFile yuborilmadi (%s); server orqali yuklanmoqda...",
+                    first_err,
+                )
+                raw = await _fetch_url_bytes_for_upload(result.download_url)
+                if not raw:
+                    await callback.message.edit_text(
+                        "❌ Video havolasidan yuklab bo'lmadi."
+                    )
+                    return
+                upload = BufferedInputFile(raw, filename=fn or "video.mp4")
+                sent = await callback.message.answer_video(
+                    video=upload,
+                    caption=caption_v,
+                    parse_mode="HTML",
+                )
+                sent_file_id = sent.video.file_id if sent.video else None
+
+            await callback.message.delete()
+
+            if sent_file_id:
+                await yt_cache_repo.cache_download(
+                    video_id=video_id,
+                    format=format_quality,
+                    file_id=sent_file_id,
+                    media_type="video",
+                    expires_hours=240,
+                )
+            await download_repo.create(
+                user_id=db_user.id,
+                url=f"https://youtube.com/watch?v={video_id}",
+                platform=Platform.YOUTUBE,
+                shortcode=video_id,
+                media_type=MediaType.VIDEO,
+                file_id=sent_file_id,
+                is_success=True,
+            )
+            await user_repo.increment_downloads(db_user.id)
         else:
-            await callback.message.edit_text("❌ File ID topilmadi")
+            await callback.message.edit_text("❌ File ID yoki yuklash havolasi topilmadi")
             
     except Exception as e:
         logger.error(f"YouTube download error: {e}")

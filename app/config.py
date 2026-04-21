@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     
     # FastSaverAPI settings
     TOKEN: str  # API token for FastSaverAPI
-    API_BASE_URL: str = "https://fastsaverapi.com"
+    API_BASE_URL: str = "https://api.fastsaver.io/v1"
     
     # Database settings
     DATABASE_URL: str

@@ -7,7 +7,9 @@ from app.database.models import Platform
 # Platform URL patterns
 PLATFORM_PATTERNS = {
     Platform.INSTAGRAM: [
-        r'(?:https?://)?(?:www\.)?instagram\.com/(?:p|reel|reels|stories|tv)/[\w-]+',
+        # Stories: /stories/{user}/{id}/ yoki /stories/highlights/{id}/
+        r'(?:https?://)?(?:www\.)?instagram\.com/stories/(?:highlights/)?[\w.-]+/[\w-]+/?(?:[?#][^\s]*)?',
+        r'(?:https?://)?(?:www\.)?instagram\.com/(?:p|reel|reels|stories|tv)/[\w.-]+(?:/[\w.-]+)?/?(?:[?#][^\s]*)?',
         r'(?:https?://)?(?:www\.)?instagram\.com/[\w.]+(?:/[\w-]+)?',
         r'(?:https?://)?instagr\.am/[\w-]+',
     ],
@@ -85,6 +87,35 @@ def extract_urls(text: str) -> list[str]:
         re.IGNORECASE
     )
     return url_pattern.findall(text)
+
+
+def normalize_fetch_url(url: str) -> str:
+    """
+    FastSaver GET /fetch uchun to‘liq https havola.
+    Ba’zan foydalanuvchi www... yoki instagram.com (skeimsiz) yuboradi.
+    """
+    u = (url or "").strip()
+    if not u:
+        return u
+    low = u.lower()
+    if low.startswith("www.instagram.com"):
+        return "https://" + u
+    if low.startswith("instagram.com/"):
+        return "https://www." + u
+    if low.startswith("instagr.am/") and not low.startswith("http"):
+        return "https://" + u
+    return u
+
+
+def fetch_media_is_video(media_type: Optional[str]) -> bool:
+    """API `type` — post, reel, story va hokazo."""
+    t = (media_type or "").lower()
+    return t in ("video", "story", "reel", "clips", "short")
+
+
+def fetch_media_is_image(media_type: Optional[str]) -> bool:
+    t = (media_type or "").lower()
+    return t in ("image", "photo", "picture")
 
 
 def extract_youtube_video_id(url: str) -> Optional[str]:

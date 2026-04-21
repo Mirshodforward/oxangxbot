@@ -1,5 +1,7 @@
 import logging
+import os
 import re
+import tempfile
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command, CommandObject, BaseFilter, StateFilter
@@ -59,6 +61,17 @@ _PLAIN_MUSIC_SEARCH_EXCLUDED_TEXTS: frozenset[str] = _menu_texts_for(
 def _normalize_search_query(raw: str) -> str:
     s = (raw or "").strip()
     return re.sub(r"\s+", " ", s)
+
+
+def _parse_shazam_id(raw: str) -> str:
+    """Shazam track ID yoki shazam.com/track/... havolasidan ID."""
+    s = (raw or "").strip()
+    if s.lower().startswith("shazam:"):
+        return s.split(":", 1)[1].strip()
+    m = re.search(r"shazam\.com/track/(\d+)", s, re.IGNORECASE)
+    if m:
+        return m.group(1)
+    return s
 
 
 def _cached_rows_to_results(rows: list[dict]) -> list[MusicSearchResult]:
@@ -178,13 +191,19 @@ async def _recognize_from_file(
     )
     
     try:
-        # Get file URL from Telegram
-        file = await bot.get_file(file_id)
-        file_url = f"https://api.telegram.org/file/bot{bot.token}/{file.file_path}"
-        
-        # Recognize music via API
-        result = await api.recognize_music(file_url)
-        
+        tg_file = await bot.get_file(file_id)
+        suffix = os.path.splitext(tg_file.file_path or "")[1] or ".dat"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            await bot.download_file(tg_file.file_path, tmp_path)
+            result = await api.recognize_music_file(tmp_path)
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
         if result.error:
             await status_msg.edit_text(get_text("shazam_not_found", lang))
             return
@@ -210,7 +229,7 @@ async def _recognize_from_file(
         # Add keyboard with download options
         keyboard = None
         if result.musics:
-            keyboard = get_recognized_music_keyboard(result.musics, result.track_url)
+            keyboard = get_recognized_music_keyboard(result.musics, result.track_id)
         
         await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         
@@ -261,7 +280,7 @@ async def process_search_query(message: Message, state: FSMContext, session: Asy
 
 
 async def _search_music(message: Message, query: str, session: AsyncSession, db_user: User, page: int = 1):
-    """Musiqa qidiruvi — GET /search-music (query, page 1–3), kesh."""
+    """Musiqa qidiruvi — GET /youtube/search (query, page 1–3), kesh."""
     query = _normalize_search_query(query)
     lang = normalize_language_code(db_user.language_code)
 
@@ -558,18 +577,16 @@ async def download_music(callback: CallbackQuery, db_user: User):
 
 @router.message(Command("lyrics"))
 async def cmd_lyrics(message: Message, command: CommandObject, db_user: User):
-    """Get lyrics - /lyrics <track_url>"""
-    lang = normalize_language_code(db_user.language_code)
-    
+    """Get lyrics — /lyrics <shazam_id yoki shazam.com/track/...>"""
     if not command.args:
         await message.answer(
-            "Usage: /lyrics <shazam_track_url>\n\nExample:\n/lyrics https://www.shazam.com/track/316840701/...",
+            "Foydalanish: /lyrics <shazam_id>\n\nMisol: /lyrics 316840701\nyoki Shazam havolasi.",
             parse_mode="HTML"
         )
         return
     
-    track_url = command.args.strip()
-    await _get_lyrics(message, track_url, db_user)
+    shazam_id = _parse_shazam_id(command.args)
+    await _get_lyrics(message, shazam_id, db_user)
 
 
 @router.callback_query(F.data.startswith("lyrics:"))
@@ -577,17 +594,19 @@ async def callback_lyrics(callback: CallbackQuery, db_user: User):
     """Get and show lyrics from callback"""
     await callback.answer(get_text("downloading", normalize_language_code(db_user.language_code)))
     
-    # The track_url is in callback data
-    track_url = callback.data.split(":", 1)[1]
-    await _get_lyrics(callback.message, track_url, db_user, edit=False)
+    shazam_id = callback.data.split(":", 1)[1].strip()
+    await _get_lyrics(callback.message, shazam_id, db_user, edit=False)
 
 
-async def _get_lyrics(message: Message, track_url: str, db_user: User, edit: bool = False):
-    """Common function to get lyrics"""
+async def _get_lyrics(message: Message, shazam_id: str, db_user: User, edit: bool = False):
+    """GET /shazam/lyrics — shazam_id."""
     lang = normalize_language_code(db_user.language_code)
     
     try:
-        success, lyrics, error = await api.get_music_lyrics(track_url)
+        if not shazam_id:
+            await message.answer(get_text("search_no_results", lang))
+            return
+        success, lyrics, error = await api.get_music_lyrics(shazam_id)
         
         if not success or not lyrics:
             text = get_text("search_no_results", lang)
@@ -625,6 +644,6 @@ async def plain_text_music_search(
     session: AsyncSession,
     db_user: User,
 ):
-    """Masalan: «Ummon» — /search bilan bir xil /search-music API."""
+    """Masalan: «Ummon» — /search bilan bir xil /youtube/search API."""
     query = _normalize_search_query(message.text)
     await _search_music(message, query, session, db_user, page=1)

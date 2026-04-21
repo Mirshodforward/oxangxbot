@@ -1,26 +1,32 @@
-import aiohttp
 import asyncio
 import json
 import logging
+import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
+
+import aiohttp
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
+def _api_ok(data: dict) -> bool:
+    return bool(data) and data.get("ok") is True
+
+
 @dataclass
 class MediaInfo:
-    """Media information response"""
+    """GET /fetch — ijtimoiy tarmoq media"""
+
     error: bool
     hosting: Optional[str] = None
     shortcode: Optional[str] = None
     caption: Optional[str] = None
-    media_type: Optional[str] = None  # video, image, carousel
+    media_type: Optional[str] = None
     download_url: Optional[str] = None
     thumb: Optional[str] = None
-    # For carousel (multiple items)
     items: Optional[list[dict]] = None
     error_message: Optional[str] = None
     raw_data: Optional[dict] = None
@@ -28,7 +34,8 @@ class MediaInfo:
 
 @dataclass
 class YouTubeDownload:
-    """YouTube download response"""
+    """YouTube: tg-bot (file_id) yoki /youtube/download (download_url)"""
+
     error: bool
     hosting: Optional[str] = None
     shortcode: Optional[str] = None
@@ -36,13 +43,14 @@ class YouTubeDownload:
     media_type: Optional[str] = None
     bot_username: Optional[str] = None
     error_message: Optional[str] = None
+    download_url: Optional[str] = None
+    filename: Optional[str] = None
 
 
 @dataclass
 class MusicSearchResult:
-    """Music search result"""
     title: str
-    shortcode: str
+    shortcode: str  # YouTube video_id
     duration: str
     thumb: str
     thumb_best: Optional[str] = None
@@ -50,20 +58,18 @@ class MusicSearchResult:
 
 @dataclass
 class MusicRecognitionResult:
-    """Music recognition result"""
     error: bool
-    track_id: Optional[str] = None
+    track_id: Optional[str] = None  # Shazam id
     title: Optional[str] = None
     artist: Optional[str] = None
     thumb: Optional[str] = None
-    track_url: Optional[str] = None
+    track_url: Optional[str] = None  # ixtiyoriy (UI uchun)
     musics: Optional[list[MusicSearchResult]] = None
     error_message: Optional[str] = None
 
 
 @dataclass
 class UsageStats:
-    """API usage statistics"""
     error: bool
     last_hour: int = 0
     last_day: int = 0
@@ -74,174 +80,194 @@ class UsageStats:
 
 
 class FastSaverAPI:
-    """FastSaverAPI client for media downloading"""
-    
+    """FastSaver API v1 — https://api.fastsaver.io/v1 , X-Api-Key"""
+
     def __init__(
         self,
-        token: str = None,
-        base_url: str = None,
-        timeout: int = 60
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        timeout: int = 120,
     ):
-        self.token = token or settings.TOKEN
-        self.base_url = base_url or settings.API_BASE_URL
+        self.api_key = (api_key or settings.TOKEN or "").strip()
+        self.base_url = (base_url or settings.API_BASE_URL or "").rstrip("/")
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
+    def _headers_base(self) -> dict[str, str]:
+        """JSON va multipart uchun (Content-Type qo'shilmaydi — FormData o'zi qo'yadi)."""
+        h = {
+            "User-Agent": "Oxangxbot/1.0",
+            "Accept": "application/json",
+        }
+        if self.api_key:
+            h["X-Api-Key"] = self.api_key
+        return h
+
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create aiohttp session"""
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
                 timeout=self.timeout,
-                headers={
-                    "User-Agent": "Oxangxbot/1.0",
-                    "Accept": "application/json"
-                }
+                headers=self._headers_base(),
             )
         return self._session
-    
-    async def close(self):
-        """Close the session"""
+
+    async def close(self) -> None:
         if self._session and not self._session.closed:
             await self._session.close()
-    
-    async def _request(
-        self,
-        endpoint: str,
-        params: dict = None,
-        retries: int = 3
-    ) -> dict:
-        """Make a request to the API"""
+
+    async def _read_json_response(self, response: aiohttp.ClientResponse) -> dict[str, Any]:
+        raw = await response.read()
+        try:
+            text = raw.decode("utf-8") if raw else ""
+            return json.loads(text) if text.strip() else {}
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            preview = raw[:300] if raw else b""
+            logger.error("JSON emas: status=%s body=%r", response.status, preview)
+            return {"ok": False, "message": f"JSON emas (HTTP {response.status})"}
+
+    async def _get(self, path: str, params: Optional[dict] = None, retries: int = 3) -> dict[str, Any]:
         session = await self._get_session()
-        url = f"{self.base_url}{endpoint}"
-        
-        # Add token to params
+        url = f"{self.base_url}{path}" if path.startswith("/") else f"{self.base_url}/{path}"
         params = params or {}
-        params["token"] = self.token
-        
         for attempt in range(retries):
             try:
-                async with session.get(url, params=params) as response:
-                    raw = await response.read()
-                    try:
-                        text = raw.decode("utf-8") if raw else ""
-                        data = json.loads(text) if text.strip() else {}
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        preview = raw[:300] if raw else b""
-                        logger.error(
-                            "API JSON emas: status=%s url=%s body=%r",
-                            response.status,
-                            endpoint,
-                            preview,
-                        )
-                        return {
-                            "error": True,
-                            "message": f"API javobi JSON emas (HTTP {response.status})",
-                        }
-
+                async with session.get(url, params=params, headers=self._headers_base()) as response:
+                    data = await self._read_json_response(response)
                     if response.status == 422:
-                        logger.error(f"Validation error: {data}")
-                        return {"error": True, "message": data.get("detail", "Validation error")}
-
+                        return {"ok": False, "message": data.get("detail", "422")}
                     if response.status != 200:
-                        logger.error(f"API error {response.status}: {data}")
-                        error_msg = data.get("message", f"API error: {response.status}")
-                        return {"error": True, "message": error_msg}
-
+                        msg = data.get("message") or data.get("error") or f"HTTP {response.status}"
+                        return {"ok": False, "message": msg}
                     return data
-                    
             except aiohttp.ClientError as e:
-                logger.error(f"Request error (attempt {attempt + 1}/{retries}): {e}")
+                logger.error("GET %s (urinish %s): %s", path, attempt + 1, e)
                 if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    await asyncio.sleep(2**attempt)
                 else:
-                    return {"error": True, "message": str(e)}
-            except Exception as e:
-                logger.error(f"Unexpected error: {e}")
-                return {"error": True, "message": str(e)}
-        
-        return {"error": True, "message": "Max retries exceeded"}
-    
+                    return {"ok": False, "message": str(e)}
+        return {"ok": False, "message": "Max retries"}
+
+    async def _post_json(self, path: str, body: dict, retries: int = 3) -> dict[str, Any]:
+        session = await self._get_session()
+        url = f"{self.base_url}{path}" if path.startswith("/") else f"{self.base_url}/{path}"
+        for attempt in range(retries):
+            try:
+                async with session.post(url, json=body, headers=self._headers_base()) as response:
+                    data = await self._read_json_response(response)
+                    if response.status not in (200, 201):
+                        msg = data.get("message") or data.get("error") or f"HTTP {response.status}"
+                        return {"ok": False, "message": msg}
+                    return data
+            except aiohttp.ClientError as e:
+                logger.error("POST %s: %s", path, e)
+                if attempt < retries - 1:
+                    await asyncio.sleep(2**attempt)
+                else:
+                    return {"ok": False, "message": str(e)}
+        return {"ok": False, "message": "Max retries"}
+
     async def get_media_info(self, url: str) -> MediaInfo:
-        """
-        Get media info from URL
-        
-        Supports: Instagram, YouTube, TikTok, Facebook, Twitter, 
-                  Pinterest, Threads, Snapchat, Likee
-        
-        Cost: 1 point
-        """
-        data = await self._request("/get-info", {"url": url})
-        
-        if data.get("error", True):
+        """GET /fetch — Instagram, TikTok, ..."""
+        data = await self._get("/fetch", {"url": url})
+        if not _api_ok(data):
             return MediaInfo(
                 error=True,
-                error_message=data.get("message", "Unknown error")
+                error_message=data.get("message") or data.get("error") or "Media topilmadi",
             )
-        
-        # Handle carousel (multiple items)
-        items = None
-        if data.get("type") == "carousel" or "medias" in data:
-            items = data.get("medias", [])
-        
+
+        raw_list = data.get("medias") or data.get("items") or data.get("slides") or []
+        if not isinstance(raw_list, list):
+            raw_list = []
+
+        download_url = data.get("download_url")
+        media_type = data.get("type")
+        caption = data.get("caption")
+
+        # Bir dona story/slide — ba'zan download_url faqat items[0] ichida
+        if not download_url and len(raw_list) == 1:
+            only = raw_list[0]
+            if isinstance(only, dict):
+                download_url = only.get("download_url") or only.get("url")
+                media_type = media_type or only.get("type")
+                caption = caption or only.get("caption")
+
+        if data.get("type") == "carousel" or len(raw_list) > 1:
+            items: Optional[list[dict]] = raw_list or None
+        else:
+            items = None
+
         return MediaInfo(
             error=False,
-            hosting=data.get("hosting"),
-            shortcode=data.get("shortcode"),
-            caption=data.get("caption"),
-            media_type=data.get("type"),
-            download_url=data.get("download_url"),
-            thumb=data.get("thumb"),
+            hosting=data.get("source"),
+            shortcode=data.get("id"),
+            caption=caption,
+            media_type=media_type,
+            download_url=download_url,
+            thumb=data.get("thumbnail_url") or data.get("thumbnail"),
             items=items,
-            raw_data=data
+            raw_data=data,
         )
-    
+
     async def download_youtube(
         self,
         video_id: str,
         format: str,
-        bot_username: str
+        bot_username: str,
     ) -> YouTubeDownload:
         """
-        Download YouTube video/audio
-        
-        Formats: 1080p, 720p, 480p, 360p, 240p, 144p, mp3
-        
-        Cost: 20 points
+        MP3/audio: POST /youtube/audio/tg-bot (file_id)
+        Video: POST /youtube/download (download_url yoki file_id)
         """
-        params = {
-            "video_id": video_id,
-            "format": format,
-            "bot_username": bot_username
-        }
-        
-        data = await self._request("/download", params)
-        
-        if data.get("error", True):
-            error_msg = data.get("message", "Unknown error")
-            if "Expecting value" in error_msg:
-                error_msg = "Ushbu musiqani yuklab olish imkonsiz (server xatoligi)."
-            elif "Not enough points" in error_msg:
-                error_msg = "Bot API balansi tugagan (0 points)."
-                
-            return YouTubeDownload(
-                error=True,
-                error_message=error_msg
+        fmt = (format or "").strip().lower()
+        if fmt == "mp3":
+            fmt = "audio"
+
+        bot_un = bot_username.strip()
+        if not bot_un.startswith("@"):
+            bot_un = f"@{bot_un}"
+
+        if fmt == "audio":
+            data = await self._post_json(
+                "/youtube/audio/tg-bot",
+                {"video_id": video_id, "bot_username": bot_un},
             )
-        
+            if not _api_ok(data):
+                msg = data.get("message", "Unknown error")
+                if "point" in msg.lower() or "credit" in msg.lower() or "balance" in msg.lower():
+                    msg = "API balansi yetarli emas."
+                return YouTubeDownload(error=True, error_message=msg, shortcode=video_id)
+            return YouTubeDownload(
+                error=False,
+                hosting="youtube",
+                shortcode=video_id,
+                file_id=data.get("file_id"),
+                media_type="audio",
+                bot_username=bot_un,
+            )
+
+        watch = f"https://www.youtube.com/watch?v={video_id}"
+        data = await self._post_json(
+            "/youtube/download",
+            {"url": watch, "format": format},
+        )
+        if not _api_ok(data):
+            msg = data.get("message", "Unknown error")
+            return YouTubeDownload(error=True, error_message=msg, shortcode=video_id)
+
         return YouTubeDownload(
             error=False,
-            hosting=data.get("hosting"),
-            shortcode=data.get("shortcode"),
+            hosting="youtube",
+            shortcode=data.get("video_id") or video_id,
             file_id=data.get("file_id"),
-            media_type=data.get("media_type"),
-            bot_username=data.get("bot_username")
+            media_type="video",
+            download_url=data.get("download_url"),
+            filename=data.get("filename"),
         )
-    
-    async def search_music(self, query: str, page: int = 1) -> tuple[bool, list[MusicSearchResult], Optional[str]]:
-        """
-        GET /search-music — query, page (1–3), token.
-        Cost: 1 point
-        """
+
+    async def search_music(
+        self, query: str, page: int = 1
+    ) -> tuple[bool, list[MusicSearchResult], Optional[str]]:
+        """GET /youtube/search"""
         q = (query or "").strip()
         if not q:
             return False, [], "Bo'sh qidiruv"
@@ -249,149 +275,150 @@ class FastSaverAPI:
             page = max(1, min(3, int(page)))
         except (TypeError, ValueError):
             page = 1
-        params = {"query": q, "page": page}
-        data = await self._request("/search-music", params)
-        
-        if data.get("error", True):
+
+        data = await self._get("/youtube/search", {"query": q, "page": page})
+        if not _api_ok(data):
             return False, [], data.get("message")
-        
-        results = []
+
+        results: list[MusicSearchResult] = []
         for item in data.get("results", []):
-            results.append(MusicSearchResult(
-                title=item.get("title", ""),
-                shortcode=item.get("shortcode", ""),
-                duration=item.get("duration", ""),
-                thumb=item.get("thumb", ""),
-                thumb_best=item.get("thumb_best")
-            ))
-        
+            vid = item.get("video_id") or item.get("shortcode") or ""
+            results.append(
+                MusicSearchResult(
+                    title=item.get("title", ""),
+                    shortcode=vid,
+                    duration=str(item.get("duration", "")),
+                    thumb=item.get("thumbnail", "") or item.get("thumb", "") or "",
+                    thumb_best=item.get("thumbnail_max") or item.get("thumb_best"),
+                )
+            )
         return True, results, None
-    
-    async def recognize_music(self, file_url: str) -> MusicRecognitionResult:
-        """
-        Recognize music from audio/video file (Shazam)
-        
-        Cost: 5 points
-        """
-        fu = (file_url or "").strip()
-        if not fu:
+
+    async def recognize_music_file(self, file_path: str) -> MusicRecognitionResult:
+        """POST /shazam/identify — fayl yuklash"""
+        if not os.path.isfile(file_path):
             return MusicRecognitionResult(
                 error=True,
-                error_message="file_url bo'sh",
+                error_message="Fayl topilmadi",
             )
-        data = await self._request("/recognize-music", {"file_url": fu})
-        
-        if data.get("error", True):
-            return MusicRecognitionResult(
-                error=True,
-                error_message=data.get("message", "Music not recognized")
-            )
-        
-        musics = []
-        for item in data.get("musics", []):
-            musics.append(MusicSearchResult(
-                title=item.get("title", ""),
-                shortcode=item.get("shortcode", ""),
-                duration=item.get("duration", ""),
-                thumb=item.get("thumb", ""),
-                thumb_best=item.get("thumb_best")
-            ))
-        
-        return MusicRecognitionResult(
-            error=False,
-            track_id=data.get("id"),
-            title=data.get("title"),
-            artist=data.get("artist"),
-            thumb=data.get("thumb"),
-            track_url=data.get("track_url"),
-            musics=musics
+
+        session = await self._get_session()
+        url = f"{self.base_url}/shazam/identify"
+        try:
+            with open(file_path, "rb") as fh:
+                raw = fh.read()
+        except OSError as e:
+            return MusicRecognitionResult(error=True, error_message=str(e))
+
+        form = aiohttp.FormData()
+        ext = os.path.splitext(file_path)[1] or ".ogg"
+        form.add_field(
+            "file",
+            raw,
+            filename=f"upload{ext}",
+            content_type="application/octet-stream",
         )
-    
-    # Fallback top musics data (used when API fails)
+
+        try:
+            async with session.post(url, data=form, headers=self._headers_base()) as response:
+                data = await self._read_json_response(response)
+                if response.status != 200 or not _api_ok(data):
+                    msg = data.get("message") or "Tanilmadi"
+                    return MusicRecognitionResult(error=True, error_message=msg)
+
+                musics: list[MusicSearchResult] = []
+                for item in data.get("results", []):
+                    vid = item.get("video_id") or ""
+                    musics.append(
+                        MusicSearchResult(
+                            title=item.get("title", ""),
+                            shortcode=vid,
+                            duration=str(item.get("duration", "")),
+                            thumb=item.get("thumbnail", "")
+                            or item.get("thumbnail_url", "")
+                            or "",
+                            thumb_best=item.get("thumbnail_max"),
+                        )
+                    )
+
+                sid = str(data.get("id", "") or "")
+                return MusicRecognitionResult(
+                    error=False,
+                    track_id=sid,
+                    title=data.get("title"),
+                    artist=data.get("artist"),
+                    thumb=data.get("thumbnail"),
+                    track_url=f"shazam:{sid}" if sid else None,
+                    musics=musics,
+                )
+        except Exception as e:
+            logger.exception("shazam/identify")
+            return MusicRecognitionResult(error=True, error_message=str(e))
+
     FALLBACK_TOP_MUSICS = [
         {"shortcode": "HfWLgELllZs", "title": "Kendrick Lamar & SZA - luther"},
         {"shortcode": "H58vbez_m4E", "title": "Kendrick Lamar - Not Like Us"},
         {"shortcode": "k-k2_Liofy8", "title": "Lola Young - Messy"},
-        {"shortcode": "GfCqMv--ncA", "title": "Kendrick Lamar, SZA - All The Stars"},
-        {"shortcode": "ekr2nIex040", "title": "ROSÉ & Bruno Mars - APT."},
-        {"shortcode": "kPa7bsKwL-c", "title": "Lady Gaga & Bruno Mars - Die With A Smile"},
-        {"shortcode": "U8F5G5wR1mk", "title": "Kendrick Lamar - tv off (feat. Lefty Gunplay)"},
-        {"shortcode": "fuV4yQWdn_4", "title": "Kendrick Lamar - squabble up"},
-        {"shortcode": "cbHkzwa0QmM", "title": "Kendrick Lamar - peekaboo (feat. AzChike)"},
-        {"shortcode": "ckM_TklU_AQ", "title": "Yeah Yeah Yeahs - Spitting Off the Edge of the World (feat. Perfume Genius)"}
     ]
-    
+
     async def get_top_musics(
         self,
         country: str = "world",
-        page: int = 1
+        page: int = 1,
     ) -> tuple[bool, list[dict], Optional[str]]:
-        """
-        Get top musics from Shazam
-        
-        Cost: 1 point
-        
-        Returns: (success, musics, error_message)
-        Note: Falls back to cached top musics if API fails
-        """
+        """GET /shazam/top"""
         try:
             page = max(1, min(3, int(page)))
         except (TypeError, ValueError):
             page = 1
-        params = {"country": country, "page": page}
-        data = await self._request("/get-top-musics", params)
-        
-        if data.get("error", True):
-            # Use fallback data when API fails
-            logger.warning(f"Top musics API failed: {data.get('message')}, using fallback data")
-            return True, self.FALLBACK_TOP_MUSICS, None
-        
-        return True, data.get("musics", []), None
-    
-    async def get_music_lyrics(self, track_url: str) -> tuple[bool, Optional[str], Optional[str]]:
-        """
-        Get music lyrics from Shazam track URL
-        
-        Cost: 5 points
-        
-        Returns: (success, lyrics, error_message)
-        """
-        tu = (track_url or "").strip()
-        if not tu:
-            return False, None, "track_url bo'sh"
-        data = await self._request("/get-music-lyrics", {"track_url": tu})
-        
-        if data.get("error", True):
-            return False, None, data.get("message", "Lyrics not found")
-        
-        return True, data.get("lyrics"), None
-    
+
+        c = (country or "world").strip().lower()
+        if c == "world":
+            c_api = "world"
+        else:
+            c_api = c.lower().replace("_", "")
+
+        data = await self._get("/shazam/top", {"country": c_api, "page": page})
+        if not _api_ok(data):
+            logger.warning("shazam/top: %s", data.get("message"))
+            return True, list(self.FALLBACK_TOP_MUSICS), None
+
+        out: list[dict] = []
+        for item in data.get("results", []):
+            vid = item.get("video_id") or item.get("shortcode") or ""
+            out.append(
+                {
+                    "shortcode": vid,
+                    "title": item.get("title", ""),
+                    "duration": item.get("duration"),
+                    "thumb": item.get("thumbnail_url") or item.get("thumbnail"),
+                }
+            )
+        return True, out, None
+
+    async def get_music_lyrics(self, shazam_id: str) -> tuple[bool, Optional[str], Optional[str]]:
+        """GET /shazam/lyrics?shazam_id="""
+        sid = (shazam_id or "").strip()
+        if not sid:
+            return False, None, "shazam_id bo'sh"
+        data = await self._get("/shazam/lyrics", {"shazam_id": sid})
+        if not _api_ok(data):
+            return False, None, data.get("message", "Lyrics topilmadi")
+        lyrics = data.get("lyrics")
+        if lyrics is None:
+            return False, None, "Lyrics bo'sh"
+        return True, str(lyrics), None
+
     async def get_usage_stats(self, filter_by_token: bool = True) -> UsageStats:
-        """
-        Get usage statistics
-        """
-        params = {"filter_by_token": str(filter_by_token).lower()}
-        data = await self._request("/get-usage-stats", params)
-        
-        if data.get("error", True):
-            return UsageStats(error=True)
-        
-        usage = data.get("usage", {})
-        return UsageStats(
-            error=False,
-            last_hour=usage.get("last_hour", 0),
-            last_day=usage.get("last_day", 0),
-            last_week=usage.get("last_week", 0),
-            last_month=usage.get("last_month", 0),
-            points=data.get("points", 0),
-            end_date=data.get("end_date")
-        )
+        """v1 hujjatda alohida credits endpoint ko'rsatilmagan."""
+        _ = filter_by_token
+        return UsageStats(error=False, points=0)
 
 
-# Global API instance with mock support
 if settings.MOCK_MODE:
     logger.warning("MOCK MODE ENABLED - Using test data instead of real API")
     from app.services.mock_api import mock_api
+
     api = mock_api
 else:
     api = FastSaverAPI()

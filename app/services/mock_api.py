@@ -65,8 +65,9 @@ class MockFastSaverAPI:
         ]
         return True, results, None
     
-    async def recognize_music(self, file_url: str) -> MusicRecognitionResult:
-        """Mock: Recognize music"""
+    async def recognize_music_file(self, file_path: str) -> MusicRecognitionResult:
+        """Mock: Shazam identify (fayl yo'li)"""
+        _ = file_path
         musics = [
             MusicSearchResult(
                 title="Shahzoda va Shohruhxon - Allo",
@@ -83,7 +84,7 @@ class MockFastSaverAPI:
             title="Alo (feat. Shoxruhxon)",
             artist="Shakhzoda",
             thumb="https://is1-ssl.mzstatic.com/image/thumb/Music128/v4/28/87/2e/28872e4f-ebc3-9b8c-3b33-3a9a5c97a0db/190295813147.jpg/1000x1000cc.jpg",
-            track_url="https://www.shazam.com/track/316840701/alo-feat-shoxruhxon",
+            track_url="shazam:316840701",
             musics=musics
         )
     
@@ -102,8 +103,9 @@ class MockFastSaverAPI:
         ]
         return True, musics, None
     
-    async def get_music_lyrics(self, track_url: str) -> tuple[bool, Optional[str], Optional[str]]:
-        """Mock: Get music lyrics"""
+    async def get_music_lyrics(self, shazam_id: str) -> tuple[bool, Optional[str], Optional[str]]:
+        """Mock: GET /shazam/lyrics"""
+        _ = shazam_id
         lyrics = """Davomiy qo'ng'iroqlarim javobsiz nega
 Sog'inganimni yollamoqchi edim senga
 
