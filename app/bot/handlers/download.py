@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Optional
 
 import aiohttp
@@ -35,42 +36,126 @@ router = Router(name="download")
 # Telegram URLInputFile ba'zi CDN (masalan Instagram) uchun 403 beradi — serverda yuklab yuboramiz
 _MAX_REMOTE_MEDIA_BYTES = 80 * 1024 * 1024
 
+_CHROME_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
 
-async def _fetch_url_bytes_for_upload(url: str) -> Optional[bytes]:
-    """Telegram o‘rniga bot serveri orqali havoladan baytlar (403 aylanishi uchun)."""
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-        ),
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-    }
+
+def _clean_instagram_page_url(page_url: str) -> str:
+    """CDN Referer uchun — instagram.com sahifa, igsh kabi querylarni soddalashtirish."""
+    u = (page_url or "").strip().split("#")[0]
+    if "instagram.com" not in u.lower():
+        return ""
+    u = re.sub(r"([?&])igsh[a-zA-Z0-9_]*=[^&]*", "", u, flags=re.IGNORECASE)
+    u = re.sub(r"\?&+", "?", u)
+    u = u.rstrip("&")
+    if u.endswith("?"):
+        u = u[:-1]
+    return u or "https://www.instagram.com/"
+
+
+def _meta_cdn_url(url: str) -> bool:
     low = url.lower()
-    if "instagram" in low or "fbcdn.net" in low or "cdninstagram" in low:
-        headers["Referer"] = "https://www.instagram.com/"
-        headers["Origin"] = "https://www.instagram.com"
+    if "dl.fastsaver" in low:
+        return False
+    return any(
+        x in low
+        for x in (
+            "cdninstagram.com",
+            "fbcdn.net",
+            "instagram.f",
+            "instagram.c",
+        )
+    )
+
+
+def _instagram_referer_chain(page_referer: Optional[str]) -> list[str]:
+    """CDN 403 bo‘lsa — avval aniq post/reel sahifasi, keyin umumiy."""
+    out: list[str] = []
+    clean = _clean_instagram_page_url(page_referer) if page_referer else ""
+    if clean and clean not in out:
+        out.append(clean)
+    if clean and "?" in clean:
+        base = clean.split("?", 1)[0].rstrip("/") + "/"
+        if base not in out:
+            out.append(base)
+    generic = "https://www.instagram.com/"
+    if generic not in out:
+        out.append(generic)
+    return out
+
+
+async def _fetch_url_bytes_for_upload(
+    url: str,
+    *,
+    page_referer: Optional[str] = None,
+) -> Optional[bytes]:
+    """Telegram o‘rniga bot serveri orqali havoladan baytlar (Instagram CDN 403 uchun Referer)."""
+    low = url.lower()
+    is_meta = _meta_cdn_url(url)
 
     timeout = aiohttp.ClientTimeout(total=180, sock_read=120)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url, headers=headers, allow_redirects=True) as resp:
-                if resp.status != 200:
-                    logger.warning("Remote GET %s -> HTTP %s", url[:120], resp.status)
-                    return None
-                cl = resp.headers.get("Content-Length")
-                if cl:
-                    try:
-                        if int(cl) > _MAX_REMOTE_MEDIA_BYTES:
-                            logger.warning("Remote file too large (Content-Length)")
-                            return None
-                    except ValueError:
-                        pass
-                data = await resp.read()
-                if len(data) > _MAX_REMOTE_MEDIA_BYTES:
-                    logger.warning("Remote file too large (body)")
-                    return None
-                return data
+            referers = (
+                _instagram_referer_chain(page_referer)
+                if is_meta
+                else ["https://www.instagram.com/"]
+            )
+
+            for ref in referers if is_meta else [None]:
+                headers: dict[str, str] = {
+                    "User-Agent": _CHROME_UA,
+                    "Accept": "*/*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept-Encoding": "gzip, deflate",
+                    "DNT": "1",
+                    "Connection": "keep-alive",
+                }
+                if is_meta and ref:
+                    dest = "video" if any(
+                        x in low for x in (".mp4", "/m86/", "/m82/", "/m85/", "video", "reel")
+                    ) else "image"
+                    headers.update(
+                        {
+                            "Referer": ref,
+                            "Origin": "https://www.instagram.com",
+                            "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+                            "Sec-Ch-Ua-Mobile": "?0",
+                            "Sec-Ch-Ua-Platform": '"Windows"',
+                            "Sec-Fetch-Dest": dest,
+                            "Sec-Fetch-Mode": "no-cors",
+                            "Sec-Fetch-Site": "cross-site",
+                        }
+                    )
+                elif "instagram" in low or "fbcdn.net" in low or "cdninstagram" in low:
+                    headers["Referer"] = "https://www.instagram.com/"
+                    headers["Origin"] = "https://www.instagram.com"
+
+                async with session.get(url, headers=headers, allow_redirects=True) as resp:
+                    if resp.status != 200:
+                        logger.warning(
+                            "Remote GET %s -> HTTP %s (Referer=%s)",
+                            url[:100],
+                            resp.status,
+                            (ref or "-")[:80] if is_meta else "-",
+                        )
+                        continue
+                    cl = resp.headers.get("Content-Length")
+                    if cl:
+                        try:
+                            if int(cl) > _MAX_REMOTE_MEDIA_BYTES:
+                                logger.warning("Remote file too large (Content-Length)")
+                                return None
+                        except ValueError:
+                            pass
+                    data = await resp.read()
+                    if len(data) > _MAX_REMOTE_MEDIA_BYTES:
+                        logger.warning("Remote file too large (body)")
+                        return None
+                    return data
+            return None
     except Exception as exc:
         logger.warning("Remote download error: %s", exc)
         return None
@@ -192,7 +277,10 @@ async def send_media_to_user(
                 "URLInputFile yuborish muvaffaqiyatsiz (%s); server orqali yuklab yuborilmoqda...",
                 first_err,
             )
-            raw = await _fetch_url_bytes_for_upload(download_url)
+            raw = await _fetch_url_bytes_for_upload(
+                download_url,
+                page_referer=original_url,
+            )
             if not raw:
                 raise
             if fetch_media_is_video(media_info.media_type):
@@ -299,7 +387,10 @@ async def send_carousel_media(
                     i + 1,
                     first_err,
                 )
-                raw = await _fetch_url_bytes_for_upload(item_url)
+                raw = await _fetch_url_bytes_for_upload(
+                    item_url,
+                    page_referer=original_url,
+                )
                 if not raw:
                     raise
                 if fetch_media_is_video(str(item_type)):

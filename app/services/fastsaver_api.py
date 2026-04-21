@@ -8,8 +8,28 @@ from typing import Any, Optional
 import aiohttp
 
 from app.config import settings
+from app.utils.helpers import extract_instagram_media_code
 
 logger = logging.getLogger(__name__)
+
+# GET /fetch ba'zan "id": "reel" kabi noaniq qiymat qaytaradi — kesh/DB uchun URLdan kod olamiz.
+_FETCH_ID_PLACEHOLDERS = frozenset(
+    {
+        "reel",
+        "reels",
+        "post",
+        "p",
+        "tv",
+        "story",
+        "stories",
+        "carousel",
+        "media",
+        "video",
+        "image",
+        "clip",
+        "",
+    }
+)
 
 
 def _api_ok(data: dict) -> bool:
@@ -221,10 +241,20 @@ class FastSaverAPI:
         else:
             items = None
 
+        api_id = data.get("id")
+        sid = str(api_id).strip() if api_id is not None else ""
+        if sid.lower() in _FETCH_ID_PLACEHOLDERS:
+            sid = ""
+        shortcode = sid or extract_instagram_media_code(url)
+        if not shortcode and api_id is not None:
+            fb = str(api_id).strip()
+            if fb.lower() not in _FETCH_ID_PLACEHOLDERS:
+                shortcode = fb
+
         return MediaInfo(
             error=False,
             hosting=data.get("source"),
-            shortcode=data.get("id"),
+            shortcode=shortcode,
             caption=caption,
             media_type=media_type,
             download_url=download_url,

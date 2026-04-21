@@ -89,6 +89,27 @@ def extract_urls(text: str) -> list[str]:
     return url_pattern.findall(text)
 
 
+def extract_instagram_media_code(url: str) -> Optional[str]:
+    """
+    instagram.com/reel/XX…/, /p/…, /tv/… yoki instagr.am/… dan media kodini ajratadi.
+    API ba'zan \"id\": \"reel\" kabi umumiy qiymat qaytaradi — shunda URL ishonchli manba.
+    """
+    u = (url or "").strip()
+    if not u:
+        return None
+    patterns = [
+        r"instagram\.com/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)",
+        r"instagr\.am/([A-Za-z0-9_-]+)",
+    ]
+    for pat in patterns:
+        m = re.search(pat, u, re.IGNORECASE)
+        if m:
+            code = m.group(1)
+            if code.lower() not in ("reels", "reel", "p", "tv", "stories", "story"):
+                return code
+    return None
+
+
 def normalize_fetch_url(url: str) -> str:
     """
     FastSaver GET /fetch uchun to‘liq https havola.

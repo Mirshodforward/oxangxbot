@@ -3,6 +3,7 @@ from app.utils.helpers import (
     detect_platform,
     is_valid_url,
     extract_urls,
+    extract_instagram_media_code,
     extract_youtube_video_id,
     get_url_hash,
     format_duration,
