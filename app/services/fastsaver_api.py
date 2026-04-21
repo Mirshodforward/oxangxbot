@@ -38,8 +38,22 @@ def _api_ok(data: dict) -> bool:
 
 
 def _is_instagram_reel_url(url: str) -> bool:
-    """Faqat /reel/... (bitta reel), /reels/ emas."""
-    return bool(re.search(r"instagram\.com/reel/[^/?#\s]+", (url or ""), re.IGNORECASE))
+    """
+    instagram.com/reel/CODE yoki instagram.com/reels/CODE (ulashish havolalari).
+    instagram.com/username/reels/ kabi profil yo‘li bu yerda emas (/ dan keyin darhol reel(s)).
+    """
+    u = (url or "").strip()
+    if not u:
+        return False
+    if re.search(r"instagram\.com/reel/[A-Za-z0-9_-]+", u, re.IGNORECASE):
+        return True
+    m = re.search(r"instagram\.com/reels/([A-Za-z0-9_-]+)", u, re.IGNORECASE)
+    if not m:
+        return False
+    code = m.group(1).lower()
+    if code in ("reel", "reels", "stories", "story", "p", "tv"):
+        return False
+    return True
 
 
 def _legacy_get_info_success(data: dict[str, Any]) -> bool:
@@ -231,15 +245,22 @@ class FastSaverAPI:
         return {"ok": False, "message": "Max retries"}
 
     async def _get_reels_get_info(self, page_url: str) -> dict[str, Any]:
-        """Eski host: GET /get-info?url=&token= (faqat reel)."""
+        """`.env` dagi API_BASE_URL_REELS: GET {base}/get-info?url=&token= (faqat reel)."""
         if not self.reels_base_url or not self.reels_token:
             return {"ok": False, "message": "Reels API sozlanmagan"}
         endpoint = f"{self.reels_base_url}/get-info"
         params = {"url": page_url, "token": self.reels_token}
         headers = {"User-Agent": "Oxangxbot/1.0", "Accept": "application/json"}
+        proxy = (settings.HTTPS_PROXY or settings.HTTP_PROXY or "").strip() or None
         try:
-            async with aiohttp.ClientSession(timeout=self.timeout) as session:
-                async with session.get(endpoint, params=params, headers=headers) as response:
+            async with aiohttp.ClientSession(
+                timeout=self.timeout,
+                trust_env=True,
+            ) as session:
+                get_kw: dict[str, Any] = {"headers": headers}
+                if proxy:
+                    get_kw["proxy"] = proxy
+                async with session.get(endpoint, params=params, **get_kw) as response:
                     data = await self._read_json_response(response)
                     if response.status != 200:
                         return {
@@ -252,6 +273,10 @@ class FastSaverAPI:
             return {"ok": False, "message": str(e)}
 
     async def _get_media_info_from_reels_legacy(self, url: str) -> MediaInfo:
+        logger.info(
+            "Instagram reel — metadata: %s/get-info (TOKEN_REELS)",
+            self.reels_base_url,
+        )
         data = await self._get_reels_get_info(url)
         if not _legacy_get_info_success(data):
             err = data.get("message")
@@ -285,7 +310,7 @@ class FastSaverAPI:
         )
 
     async def get_media_info(self, url: str) -> MediaInfo:
-        """Instagram reel → eski /get-info (TOKEN_REELS). Boshqasi → GET /fetch (v1)."""
+        """Instagram reel → `.env` dagi `API_BASE_URL_REELS` + `TOKEN_REELS` (`/get-info`). Boshqasi → v1 `/fetch`."""
         if _is_instagram_reel_url(url) and self.reels_base_url and self.reels_token:
             legacy = await self._get_media_info_from_reels_legacy(url)
             if not legacy.error:
