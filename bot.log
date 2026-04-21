@@ -1441,3 +1441,98 @@ reply_markup
 2026-04-12 15:50:35,842 - aiogram.dispatcher - WARNING - Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8443009413)
 2026-04-12 15:50:35,956 - aiogram.dispatcher - INFO - Polling stopped for bot @starspaymee_kinobot id=8443009413 - 'StarsPaymee Kino bot'
 2026-04-12 15:50:35,960 - __main__ - INFO - Bot stopped by user
+2026-04-21 15:00:51,493 - __main__ - INFO - Starting polling...
+2026-04-21 15:00:51,493 - __main__ - INFO - Bot starting up...
+2026-04-21 15:00:51,928 - __main__ - INFO - Database initialized
+2026-04-21 15:00:52,817 - __main__ - INFO - Bot: @Oxangxbot (7995532640)
+2026-04-21 15:00:52,817 - __main__ - INFO - API Points: 0
+2026-04-21 15:00:53,055 - __main__ - INFO - Bot commands menu updated
+2026-04-21 15:00:53,055 - aiogram.dispatcher - INFO - Start polling
+2026-04-21 15:00:53,396 - aiogram.dispatcher - INFO - Run polling for bot @Oxangxbot id=7995532640 - 'OxangX Bot | Tarona Bot'
+2026-04-21 15:01:10,309 - aiogram.event - INFO - Update id=635274006 is handled. Duration 1657 ms by bot id=7995532640
+2026-04-21 15:01:14,609 - aiogram.event - INFO - Update id=635274007 is handled. Duration 609 ms by bot id=7995532640
+2026-04-21 15:01:24,026 - app.bot.handlers.download - INFO - User 2 requested: https://www.instagram.com/reel/DXQSXe5Rv0w/?igsh=MWxhOXI5ODMwaDBsbQ== (platform: Platform.INSTAGRAM)
+2026-04-21 15:01:26,213 - app.bot.handlers.download - ERROR - Error handling URL: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) <class 'asyncpg.exceptions.UndefinedColumnError'>: column cached_media.hit_count does not exist
+[SQL: SELECT cached_media.id, cached_media.url_hash, cached_media.original_url, cached_media.platform, cached_media.media_type, cached_media.shortcode, cached_media.download_url, cached_media.thumb_url, cached_media.caption, cached_media.file_id, cached_media.file_id_audio, cached_media.hit_count, cached_media.points_cost, cached_media.api_response_json, cached_media.created_at, cached_media.expires_at 
+FROM cached_media 
+WHERE cached_media.url_hash = $1::VARCHAR AND (cached_media.expires_at IS NULL OR cached_media.expires_at > $2::TIMESTAMP WITHOUT TIME ZONE)]
+[parameters: ('c62f5f39ec2c0b310d1837fd86bd8cf6', datetime.datetime(2026, 4, 21, 10, 1, 26, 174816))]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2026-04-21 15:01:26,528 - aiogram.event - INFO - Update id=635274008 is handled. Duration 2546 ms by bot id=7995532640
+2026-04-21 15:03:03,925 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-21 15:03:03,927 - __main__ - INFO - Bot shutting down...
+2026-04-21 15:03:03,932 - __main__ - INFO - Cleanup complete
+2026-04-21 15:03:04,198 - aiogram.dispatcher - INFO - Polling stopped for bot @Oxangxbot id=7995532640 - 'OxangX Bot | Tarona Bot'
+2026-04-21 15:03:04,200 - __main__ - INFO - Bot stopped by user
+2026-04-21 15:03:54,031 - __main__ - INFO - Starting polling...
+2026-04-21 15:03:54,031 - __main__ - INFO - Bot starting up...
+2026-04-21 15:03:54,197 - __main__ - INFO - Database initialized
+2026-04-21 15:03:54,875 - __main__ - INFO - Bot: @Oxangxbot (7995532640)
+2026-04-21 15:03:54,876 - __main__ - INFO - API Points: 0
+2026-04-21 15:03:55,084 - __main__ - INFO - Bot commands menu updated
+2026-04-21 15:03:55,085 - aiogram.dispatcher - INFO - Start polling
+2026-04-21 15:03:55,229 - aiogram.dispatcher - INFO - Run polling for bot @Oxangxbot id=7995532640 - 'OxangX Bot | Tarona Bot'
+2026-04-21 15:04:02,689 - app.bot.handlers.download - INFO - User 1 requested: https://www.instagram.com/reel/DXQSXe5Rv0w/?igsh=MWxhOXI5ODMwaDBsbQ== (platform: Platform.INSTAGRAM)
+2026-04-21 15:04:06,856 - app.bot.handlers.download - WARNING - URLInputFile yuborish muvaffaqiyatsiz (HTTP Client says - ClientResponseError: 403, message='Forbidden', url=URL('https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kcA_EKpt23mxoq1wCmgiJOl1RPqIN7Dej2eF9fxLcwPP8qEUfotAMjdldh4L0.mp4?stp=dst-mp4&efg=eyJxZV9ncm91cHMiOiJbXCJpZ193ZWJfZGVsaXZlcnlfdnRzX290ZlwiXSIsInZlbmNvZGVfdGFnIjoidnRzX3ZvZF91cmxnZW4uY2xpcHMuYzIuNzIwLmJhc2VsaW5lIn0&_nc_cat=102&vs=1999266364339240_1723356188&_nc_vs=HBksFQIYUmlnX3hwdl9yZWVsc19wZXJtYW5lbnRfc3JfcHJvZC83MDQzRTFDNzlBMDgyNUE0MkE5NzIxNTIwQjAzODFBQl92aWRlb19kYXNoaW5pdC5tcDQVAALIARIAFQIYUWlnX3hwdl9wbGFjZW1lbnRfcGVybWFuZW50X3YyL0I5NDhCOUQyOTk5RUUzQTc3Q0FBMDk4NEE4Q0VDRkFDX2F1ZGlvX2Rhc2hpbml0Lm1wNBUCAsgBEgAoABgAGwAVAAAm0Intwb%2B/vwYVAigCQzMsF0AiVP3ztkWiGBJkYXNoX2Jhc2VsaW5lXzFfdjERAHX%2BB2WWqQEA&ccb=9-4&oh=00_Af3C5A7kMp4hvMDMagTvD2P4fEKNOq1Ey6wystIyFE1A_Q&oe=69E93043&_nc_sid=10d13b')); server orqali yuklab yuborilmoqda...
+2026-04-21 15:04:09,307 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kc -> HTTP 403 (Referer=https://www.instagram.com/reel/DXQSXe5Rv0w/?igsh=MWxhOXI5ODMwaDBsbQ==)
+2026-04-21 15:04:09,523 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kc -> HTTP 403 (Referer=https://www.instagram.com/reel/DXQSXe5Rv0w/)
+2026-04-21 15:04:09,740 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kc -> HTTP 403 (Referer=https://www.instagram.com/)
+2026-04-21 15:04:09,740 - app.bot.handlers.download - WARNING - Instagram CDN 403 — ko‘p hostinglar IP bloklangan. .env da HTTPS_PROXY (rezident proxy) yoki tizim HTTPS_PROXY; yoki FastSaver dan tunnel/proxy URL so‘rang.
+2026-04-21 15:04:09,743 - app.bot.handlers.download - ERROR - Error sending media: HTTP Client says - ClientResponseError: 403, message='Forbidden', url=URL('https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kcA_EKpt23mxoq1wCmgiJOl1RPqIN7Dej2eF9fxLcwPP8qEUfotAMjdldh4L0.mp4?stp=dst-mp4&efg=eyJxZV9ncm91cHMiOiJbXCJpZ193ZWJfZGVsaXZlcnlfdnRzX290ZlwiXSIsInZlbmNvZGVfdGFnIjoidnRzX3ZvZF91cmxnZW4uY2xpcHMuYzIuNzIwLmJhc2VsaW5lIn0&_nc_cat=102&vs=1999266364339240_1723356188&_nc_vs=HBksFQIYUmlnX3hwdl9yZWVsc19wZXJtYW5lbnRfc3JfcHJvZC83MDQzRTFDNzlBMDgyNUE0MkE5NzIxNTIwQjAzODFBQl92aWRlb19kYXNoaW5pdC5tcDQVAALIARIAFQIYUWlnX3hwdl9wbGFjZW1lbnRfcGVybWFuZW50X3YyL0I5NDhCOUQyOTk5RUUzQTc3Q0FBMDk4NEE4Q0VDRkFDX2F1ZGlvX2Rhc2hpbml0Lm1wNBUCAsgBEgAoABgAGwAVAAAm0Intwb%2B/vwYVAigCQzMsF0AiVP3ztkWiGBJkYXNoX2Jhc2VsaW5lXzFfdjERAHX%2BB2WWqQEA&ccb=9-4&oh=00_Af3C5A7kMp4hvMDMagTvD2P4fEKNOq1Ey6wystIyFE1A_Q&oe=69E93043&_nc_sid=10d13b')
+2026-04-21 15:04:10,238 - aiogram.event - INFO - Update id=635274009 is handled. Duration 7655 ms by bot id=7995532640
+2026-04-21 15:05:56,424 - app.bot.handlers.download - INFO - User 1 requested: https://youtube.com/shorts/-lxDHz3FGSU?si=PK7bS56FuP5vj_Rf (platform: Platform.YOUTUBE)
+2026-04-21 15:05:57,110 - aiogram.event - INFO - Update id=635274010 is handled. Duration 765 ms by bot id=7995532640
+2026-04-21 15:06:01,876 - aiogram.event - INFO - Update id=635274012 is not handled. Duration 30 ms by bot id=7995532640
+2026-04-21 15:06:02,229 - app.bot.handlers.download - INFO - YouTube cached: video_id=-lxDHz3FGSU, format=mp3
+2026-04-21 15:06:02,257 - aiogram.event - INFO - Update id=635274011 is handled. Duration 3359 ms by bot id=7995532640
+2026-04-21 15:06:22,991 - app.bot.handlers.download - INFO - User 1 requested: https://youtube.com/shorts/-lxDHz3FGSU?si=PK7bS56FuP5vj_Rf (platform: Platform.YOUTUBE)
+2026-04-21 15:06:23,881 - aiogram.event - INFO - Update id=635274013 is handled. Duration 905 ms by bot id=7995532640
+2026-04-21 15:06:30,502 - aiogram.event - INFO - Update id=635274014 is handled. Duration 4702 ms by bot id=7995532640
+2026-04-21 15:06:43,803 - aiogram.event - INFO - Update id=635274015 is handled. Duration 469 ms by bot id=7995532640
+2026-04-21 15:06:51,691 - aiogram.event - INFO - Update id=635274016 is handled. Duration 811 ms by bot id=7995532640
+2026-04-21 15:07:22,577 - app.bot.handlers.download - INFO - User 1 requested: https://www.instagram.com/stories/asliddinpardayev1/3879722436405252143?utm_source=ig_story_item_share&igsh=MTV3dXU3OXdscWFqaw== (platform: Platform.INSTAGRAM)
+2026-04-21 15:07:39,313 - aiogram.event - INFO - Update id=635274017 is handled. Duration 16780 ms by bot id=7995532640
+2026-04-21 15:07:59,145 - app.bot.handlers.download - INFO - User 1 requested: https://www.instagram.com/reel/DXAy2AtDvWL/?igsh=MXViajAxZ253djJqdg== (platform: Platform.INSTAGRAM)
+2026-04-21 15:08:03,647 - app.bot.handlers.download - WARNING - URLInputFile yuborish muvaffaqiyatsiz (HTTP Client says - ClientResponseError: 403, message='Forbidden', url=URL('https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQMpgGNP8G6lXFi3wXMontm57BR_RhA0R_PnDX0ZLrRWqwEdBOzWl93Z9MuRYHeHmu0-tGF_Jgp_UMZyu1SOpAFeknv0BASup0pDHGk.mp4?stp=dst-mp4&efg=eyJxZV9ncm91cHMiOiJbXCJpZ193ZWJfZGVsaXZlcnlfdnRzX290ZlwiXSIsInZlbmNvZGVfdGFnIjoidnRzX3ZvZF91cmxnZW4uY2xpcHMuYzIuMTI3Ni5iYXNlbGluZSJ9&_nc_cat=105&vs=1903487660316192_3419284903&_nc_vs=HBksFQIYUmlnX3hwdl9yZWVsc19wZXJtYW5lbnRfc3JfcHJvZC9ERDQ4RDQ0REQ3QzI0Q0IzQTc2ODlFQjgwQ0VFMDlCM192aWRlb19kYXNoaW5pdC5tcDQVAALIARIAFQIYUWlnX3hwdl9wbGFjZW1lbnRfcGVybWFuZW50X3YyLzY5NEVENjkwQ0IxREE0MzFDRDg0OEE2RDMwQkZDMDkyX2F1ZGlvX2Rhc2hpbml0Lm1wNBUCAsgBEgAoABgAGwAVAAAm1t6mqqzD/T8VAigCQzMsF0Apd0vGp%2B%2BeGBJkYXNoX2Jhc2VsaW5lXzFfdjERAHX%2BB2XmnQEA&ccb=9-4&oh=00_Af3x_txb_4ZJnall-02XCjTPyWU98vmIbTYzzPA9NfOIZw&oe=69E9215E&_nc_sid=10d13b')); server orqali yuklab yuborilmoqda...
+2026-04-21 15:08:07,484 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQMpgGNP8G6lXFi3wXMontm57BR_RhA0R_PnDX0ZLrRW -> HTTP 403 (Referer=https://www.instagram.com/reel/DXAy2AtDvWL/?igsh=MXViajAxZ253djJqdg==)
+2026-04-21 15:08:07,713 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQMpgGNP8G6lXFi3wXMontm57BR_RhA0R_PnDX0ZLrRW -> HTTP 403 (Referer=https://www.instagram.com/reel/DXAy2AtDvWL/)
+2026-04-21 15:08:07,947 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQMpgGNP8G6lXFi3wXMontm57BR_RhA0R_PnDX0ZLrRW -> HTTP 403 (Referer=https://www.instagram.com/)
+2026-04-21 15:08:07,948 - app.bot.handlers.download - WARNING - Instagram CDN 403 — ko‘p hostinglar IP bloklangan. .env da HTTPS_PROXY (rezident proxy) yoki tizim HTTPS_PROXY; yoki FastSaver dan tunnel/proxy URL so‘rang.
+2026-04-21 15:08:07,950 - app.bot.handlers.download - ERROR - Error sending media: HTTP Client says - ClientResponseError: 403, message='Forbidden', url=URL('https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQMpgGNP8G6lXFi3wXMontm57BR_RhA0R_PnDX0ZLrRWqwEdBOzWl93Z9MuRYHeHmu0-tGF_Jgp_UMZyu1SOpAFeknv0BASup0pDHGk.mp4?stp=dst-mp4&efg=eyJxZV9ncm91cHMiOiJbXCJpZ193ZWJfZGVsaXZlcnlfdnRzX290ZlwiXSIsInZlbmNvZGVfdGFnIjoidnRzX3ZvZF91cmxnZW4uY2xpcHMuYzIuMTI3Ni5iYXNlbGluZSJ9&_nc_cat=105&vs=1903487660316192_3419284903&_nc_vs=HBksFQIYUmlnX3hwdl9yZWVsc19wZXJtYW5lbnRfc3JfcHJvZC9ERDQ4RDQ0REQ3QzI0Q0IzQTc2ODlFQjgwQ0VFMDlCM192aWRlb19kYXNoaW5pdC5tcDQVAALIARIAFQIYUWlnX3hwdl9wbGFjZW1lbnRfcGVybWFuZW50X3YyLzY5NEVENjkwQ0IxREE0MzFDRDg0OEE2RDMwQkZDMDkyX2F1ZGlvX2Rhc2hpbml0Lm1wNBUCAsgBEgAoABgAGwAVAAAm1t6mqqzD/T8VAigCQzMsF0Apd0vGp%2B%2BeGBJkYXNoX2Jhc2VsaW5lXzFfdjERAHX%2BB2XmnQEA&ccb=9-4&oh=00_Af3x_txb_4ZJnall-02XCjTPyWU98vmIbTYzzPA9NfOIZw&oe=69E9215E&_nc_sid=10d13b')
+2026-04-21 15:08:08,423 - aiogram.event - INFO - Update id=635274018 is handled. Duration 9328 ms by bot id=7995532640
+2026-04-21 15:10:07,390 - app.bot.handlers.download - INFO - User 1 requested: https://www.instagram.com/p/DXHH1JuDGMs/?igsh=MWxmanl3eHh4NnBmNw== (platform: Platform.INSTAGRAM)
+2026-04-21 15:10:35,243 - aiogram.event - INFO - Update id=635274019 is handled. Duration 27905 ms by bot id=7995532640
+2026-04-21 15:23:02,768 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-21 15:23:02,769 - __main__ - INFO - Bot shutting down...
+2026-04-21 15:23:02,776 - __main__ - INFO - Cleanup complete
+2026-04-21 15:23:02,994 - aiogram.dispatcher - INFO - Polling stopped for bot @Oxangxbot id=7995532640 - 'OxangX Bot | Tarona Bot'
+2026-04-21 15:23:03,000 - __main__ - INFO - Bot stopped by user
+2026-04-21 15:23:07,297 - __main__ - INFO - Starting polling...
+2026-04-21 15:23:07,297 - __main__ - INFO - Bot starting up...
+2026-04-21 15:23:07,393 - __main__ - INFO - Database initialized
+2026-04-21 15:23:08,163 - __main__ - INFO - Bot: @Oxangxbot (7995532640)
+2026-04-21 15:23:08,164 - __main__ - INFO - API Points: 0
+2026-04-21 15:23:08,330 - __main__ - INFO - Bot commands menu updated
+2026-04-21 15:23:08,330 - aiogram.dispatcher - INFO - Start polling
+2026-04-21 15:23:08,606 - aiogram.dispatcher - INFO - Run polling for bot @Oxangxbot id=7995532640 - 'OxangX Bot | Tarona Bot'
+2026-04-21 15:23:35,521 - app.bot.handlers.download - INFO - User 1 requested: https://www.instagram.com/reel/DXQSXe5Rv0w/?igsh=MWxhOXI5ODMwaDBsbQ== (platform: Platform.INSTAGRAM)
+2026-04-21 15:23:38,697 - app.bot.handlers.download - INFO - User 2 requested: https://www.instagram.com/reel/DXKJd8ZjeAU/?igsh=MWJ4NDJpbnk4OHZ4Yw== (platform: Platform.INSTAGRAM)
+2026-04-21 15:23:39,177 - app.bot.handlers.download - WARNING - URLInputFile yuborish muvaffaqiyatsiz (HTTP Client says - ClientResponseError: 403, message='Forbidden', url=URL('https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kcA_EKpt23mxoq1wCmgiJOl1RPqIN7Dej2eF9fxLcwPP8qEUfotAMjdldh4L0.mp4?stp=dst-mp4&efg=eyJxZV9ncm91cHMiOiJbXCJpZ193ZWJfZGVsaXZlcnlfdnRzX290ZlwiXSIsInZlbmNvZGVfdGFnIjoidnRzX3ZvZF91cmxnZW4uY2xpcHMuYzIuNzIwLmJhc2VsaW5lIn0&_nc_cat=102&vs=1999266364339240_1723356188&_nc_vs=HBksFQIYUmlnX3hwdl9yZWVsc19wZXJtYW5lbnRfc3JfcHJvZC83MDQzRTFDNzlBMDgyNUE0MkE5NzIxNTIwQjAzODFBQl92aWRlb19kYXNoaW5pdC5tcDQVAALIARIAFQIYUWlnX3hwdl9wbGFjZW1lbnRfcGVybWFuZW50X3YyL0I5NDhCOUQyOTk5RUUzQTc3Q0FBMDk4NEE4Q0VDRkFDX2F1ZGlvX2Rhc2hpbml0Lm1wNBUCAsgBEgAoABgAGwAVAAAm0Intwb%2B/vwYVAigCQzMsF0AiVP3ztkWiGBJkYXNoX2Jhc2VsaW5lXzFfdjERAHX%2BB2WWqQEA&ccb=9-4&oh=00_Af3C5A7kMp4hvMDMagTvD2P4fEKNOq1Ey6wystIyFE1A_Q&oe=69E93043&_nc_sid=10d13b')); server orqali yuklab yuborilmoqda...
+2026-04-21 15:23:42,353 - app.bot.handlers.download - WARNING - URLInputFile yuborish muvaffaqiyatsiz (HTTP Client says - ClientResponseError: 403, message='Forbidden', url=URL('https://instagram.fdad3-1.fna.fbcdn.net/o1/v/t16/f2/m86/AQNoNYWUcA1g54GOZWH14sRh1tj1T5gwTOm0rseY8HjBobLbtw0RAtyiwCqbH4Zz05D4SAdU52HgbOxhxj3ofvfZBeqK24qNuA3KW_Q.mp4?stp=dst-mp4&efg=eyJxZV9ncm91cHMiOiJbXCJpZ193ZWJfZGVsaXZlcnlfdnRzX290ZlwiXSIsInZlbmNvZGVfdGFnIjoidnRzX3ZvZF91cmxnZW4uY2xpcHMuYzIuNzIwLmJhc2VsaW5lIn0&_nc_cat=108&vs=826727036555597_1123246445&_nc_vs=HBksFQIYUmlnX3hwdl9yZWVsc19wZXJtYW5lbnRfc3JfcHJvZC84NDQ1NDVERDdDNzlEOThCMjkzOUQ1OEE1RkZFNTU5NV92aWRlb19kYXNoaW5pdC5tcDQVAALIARIAFQIYUWlnX3hwdl9wbGFjZW1lbnRfcGVybWFuZW50X3YyL0Q4NDU3NzVGQUExMTk2OTlGRkYwMEM3QjMxMjVBQzk2X2F1ZGlvX2Rhc2hpbml0Lm1wNBUCAsgBEgAoABgAGwAVAAAm%2BI2D8/f8vT8VAigCQzMsF0A7oAAAAAAAGBJkYXNoX2Jhc2VsaW5lXzFfdjERAHX%2BB2XmnQEA&ccb=9-4&oh=00_Af3m3N0eUGPZYSn0082so2CW1pHUeLwaSgdmI2mRoUrWHQ&oe=69E92CEA&_nc_sid=10d13b')); server orqali yuklab yuborilmoqda...
+2026-04-21 15:23:44,987 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kc -> HTTP 403 (Referer=https://www.instagram.com/reel/DXQSXe5Rv0w/?igsh=MWxhOXI5ODMwaDBsbQ==)
+2026-04-21 15:23:45,829 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kc -> HTTP 403 (Referer=https://www.instagram.com/reel/DXQSXe5Rv0w/)
+2026-04-21 15:23:46,056 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fsgn5-9.fna.fbcdn.net/o1/v/t16/f2/m86/AQOpkvBmwsjwM1wlO1VxzDS2wooA1EuPvC6yZHGQJ_kc -> HTTP 403 (Referer=https://www.instagram.com/)
+2026-04-21 15:23:46,057 - app.bot.handlers.download - WARNING - Instagram CDN 403 — ko‘p hostinglar IP bloklangan. .env da HTTPS_PROXY (rezident proxy) yoki tizim HTTPS_PROXY; yoki FastSaver dan tunnel/proxy URL so‘rang.
+2026-04-21 15:23:46,059 - app.bot.handlers.download - INFO - CDN 403 — yt-dlp bilan qayta urinilmoqda...
+2026-04-21 15:23:46,864 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fdad3-1.fna.fbcdn.net/o1/v/t16/f2/m86/AQNoNYWUcA1g54GOZWH14sRh1tj1T5gwTOm0rseY8HjB -> HTTP 403 (Referer=https://www.instagram.com/reel/DXKJd8ZjeAU/?igsh=MWJ4NDJpbnk4OHZ4Yw==)
+2026-04-21 15:23:47,147 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fdad3-1.fna.fbcdn.net/o1/v/t16/f2/m86/AQNoNYWUcA1g54GOZWH14sRh1tj1T5gwTOm0rseY8HjB -> HTTP 403 (Referer=https://www.instagram.com/reel/DXKJd8ZjeAU/)
+2026-04-21 15:23:47,433 - app.bot.handlers.download - WARNING - Remote GET https://instagram.fdad3-1.fna.fbcdn.net/o1/v/t16/f2/m86/AQNoNYWUcA1g54GOZWH14sRh1tj1T5gwTOm0rseY8HjB -> HTTP 403 (Referer=https://www.instagram.com/)
+2026-04-21 15:23:47,433 - app.bot.handlers.download - WARNING - Instagram CDN 403 — ko‘p hostinglar IP bloklangan. .env da HTTPS_PROXY (rezident proxy) yoki tizim HTTPS_PROXY; yoki FastSaver dan tunnel/proxy URL so‘rang.
+2026-04-21 15:23:47,435 - app.bot.handlers.download - INFO - CDN 403 — yt-dlp bilan qayta urinilmoqda...
+2026-04-21 15:23:55,186 - aiogram.event - INFO - Update id=635274021 is handled. Duration 16735 ms by bot id=7995532640
+2026-04-21 15:23:55,459 - aiogram.event - INFO - Update id=635274020 is handled. Duration 20047 ms by bot id=7995532640
+2026-04-21 15:24:51,429 - aiogram.dispatcher - INFO - Polling stopped
+2026-04-21 15:24:51,430 - __main__ - INFO - Bot shutting down...
+2026-04-21 15:24:51,440 - __main__ - INFO - Cleanup complete
+2026-04-21 15:24:51,601 - aiogram.dispatcher - INFO - Polling stopped for bot @Oxangxbot id=7995532640 - 'OxangX Bot | Tarona Bot'
+2026-04-21 15:24:51,604 - __main__ - INFO - Bot stopped by user

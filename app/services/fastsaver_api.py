@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -34,6 +35,22 @@ _FETCH_ID_PLACEHOLDERS = frozenset(
 
 def _api_ok(data: dict) -> bool:
     return bool(data) and data.get("ok") is True
+
+
+def _is_instagram_reel_url(url: str) -> bool:
+    """Faqat /reel/... (bitta reel), /reels/ emas."""
+    return bool(re.search(r"instagram\.com/reel/[^/?#\s]+", (url or ""), re.IGNORECASE))
+
+
+def _legacy_get_info_success(data: dict[str, Any]) -> bool:
+    """Eski get-info: {\"error\": false, ...}"""
+    if not isinstance(data, dict) or not data:
+        return False
+    if data.get("error") is True:
+        return False
+    if data.get("error") is False:
+        return True
+    return _api_ok(data)
 
 
 def _error_message_from_body(data: dict[str, Any], status: int) -> str:
@@ -129,6 +146,8 @@ class FastSaverAPI:
     ):
         self.api_key = (api_key or settings.TOKEN or "").strip()
         self.base_url = (base_url or settings.API_BASE_URL or "").rstrip("/")
+        self.reels_base_url = (settings.API_BASE_URL_REELS or "").strip().rstrip("/")
+        self.reels_token = (settings.TOKEN_REELS or "").strip()
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: Optional[aiohttp.ClientSession] = None
 
@@ -211,8 +230,71 @@ class FastSaverAPI:
                     return {"ok": False, "message": str(e)}
         return {"ok": False, "message": "Max retries"}
 
+    async def _get_reels_get_info(self, page_url: str) -> dict[str, Any]:
+        """Eski host: GET /get-info?url=&token= (faqat reel)."""
+        if not self.reels_base_url or not self.reels_token:
+            return {"ok": False, "message": "Reels API sozlanmagan"}
+        endpoint = f"{self.reels_base_url}/get-info"
+        params = {"url": page_url, "token": self.reels_token}
+        headers = {"User-Agent": "Oxangxbot/1.0", "Accept": "application/json"}
+        try:
+            async with aiohttp.ClientSession(timeout=self.timeout) as session:
+                async with session.get(endpoint, params=params, headers=headers) as response:
+                    data = await self._read_json_response(response)
+                    if response.status != 200:
+                        return {
+                            "ok": False,
+                            "message": _error_message_from_body(data, response.status),
+                        }
+                    return data
+        except aiohttp.ClientError as e:
+            logger.error("Reels GET /get-info: %s", e)
+            return {"ok": False, "message": str(e)}
+
+    async def _get_media_info_from_reels_legacy(self, url: str) -> MediaInfo:
+        data = await self._get_reels_get_info(url)
+        if not _legacy_get_info_success(data):
+            err = data.get("message")
+            if err is None or isinstance(err, bool):
+                err = data.get("error")
+            if isinstance(err, bool):
+                err = None
+            if err is None:
+                err = _error_message_from_body(data, 400) if data else "Reel topilmadi"
+            return MediaInfo(error=True, error_message=str(err))
+
+        dl = data.get("download_url")
+        if not dl:
+            return MediaInfo(error=True, error_message="download_url yo'q")
+
+        sc = (data.get("shortcode") or "").strip() or extract_instagram_media_code(url)
+        hosting = data.get("hosting") or data.get("source") or "instagram"
+        if not isinstance(hosting, str):
+            hosting = str(hosting)
+
+        return MediaInfo(
+            error=False,
+            hosting=hosting,
+            shortcode=sc or None,
+            caption=data.get("caption"),
+            media_type=data.get("type") or "video",
+            download_url=dl,
+            thumb=data.get("thumb") or data.get("thumbnail_url"),
+            items=None,
+            raw_data=data,
+        )
+
     async def get_media_info(self, url: str) -> MediaInfo:
-        """GET /fetch — Instagram, TikTok, ..."""
+        """Instagram reel → eski /get-info (TOKEN_REELS). Boshqasi → GET /fetch (v1)."""
+        if _is_instagram_reel_url(url) and self.reels_base_url and self.reels_token:
+            legacy = await self._get_media_info_from_reels_legacy(url)
+            if not legacy.error:
+                return legacy
+            logger.warning(
+                "Reels legacy API xato (%s) — v1 /fetch ga fallback",
+                legacy.error_message,
+            )
+
         data = await self._get("/fetch", {"url": url})
         if not _api_ok(data):
             return MediaInfo(

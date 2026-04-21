@@ -1,5 +1,9 @@
+import asyncio
 import logging
+import os
 import re
+import shutil
+import tempfile
 from typing import Optional
 
 import aiohttp
@@ -71,8 +75,11 @@ def _meta_cdn_url(url: str) -> bool:
 
 
 def _instagram_referer_chain(page_referer: Optional[str]) -> list[str]:
-    """CDN 403 bo‘lsa — avval aniq post/reel sahifasi, keyin umumiy."""
+    """CDN uchun Refererlar: avval to‘liq URL (igsh bilan), keyin tozalangan, keyin umumiy."""
     out: list[str] = []
+    raw = (page_referer or "").strip().split("#")[0]
+    if raw and "instagram.com" in raw.lower() and raw not in out:
+        out.append(raw)
     clean = _clean_instagram_page_url(page_referer) if page_referer else ""
     if clean and clean not in out:
         out.append(clean)
@@ -86,6 +93,48 @@ def _instagram_referer_chain(page_referer: Optional[str]) -> list[str]:
     return out
 
 
+async def _prime_instagram_cookies(
+    session: aiohttp.ClientSession,
+    page_referer: str,
+    *,
+    proxy: Optional[str],
+) -> None:
+    """fbcdn 403 kamaytirish: avval reel/post sahifasini ochib cookie olish (anonim)."""
+    page = (page_referer or "").strip().split("#")[0]
+    if not page or "instagram.com" not in page.lower():
+        return
+    headers = {
+        "User-Agent": _CHROME_UA,
+        "Accept": (
+            "text/html,application/xhtml+xml,application/xml;q=0.9,"
+            "image/avif,image/webp,*/*;q=0.8"
+        ),
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate",
+        "DNT": "1",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Ch-Ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+    }
+    try:
+        req_kw: dict = {
+            "headers": headers,
+            "allow_redirects": True,
+            "max_redirects": 8,
+        }
+        if proxy:
+            req_kw["proxy"] = proxy
+        async with session.get(page, **req_kw) as pr:
+            await pr.read()
+    except Exception as exc:
+        logger.debug("Instagram cookie prime: %s", exc)
+
+
 async def _fetch_url_bytes_for_upload(
     url: str,
     *,
@@ -96,8 +145,17 @@ async def _fetch_url_bytes_for_upload(
     is_meta = _meta_cdn_url(url)
 
     timeout = aiohttp.ClientTimeout(total=180, sock_read=120)
+    proxy = settings.HTTPS_PROXY or settings.HTTP_PROXY
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        jar = aiohttp.CookieJar(unsafe=True)
+        async with aiohttp.ClientSession(
+            timeout=timeout,
+            cookie_jar=jar,
+            trust_env=True,
+        ) as session:
+            if is_meta and page_referer and "instagram.com" in page_referer.lower():
+                await _prime_instagram_cookies(session, page_referer, proxy=proxy)
+
             referers = (
                 _instagram_referer_chain(page_referer)
                 if is_meta
@@ -133,7 +191,10 @@ async def _fetch_url_bytes_for_upload(
                     headers["Referer"] = "https://www.instagram.com/"
                     headers["Origin"] = "https://www.instagram.com"
 
-                async with session.get(url, headers=headers, allow_redirects=True) as resp:
+                get_kw: dict = {"headers": headers, "allow_redirects": True}
+                if proxy:
+                    get_kw["proxy"] = proxy
+                async with session.get(url, **get_kw) as resp:
                     if resp.status != 200:
                         logger.warning(
                             "Remote GET %s -> HTTP %s (Referer=%s)",
@@ -141,6 +202,12 @@ async def _fetch_url_bytes_for_upload(
                             resp.status,
                             (ref or "-")[:80] if is_meta else "-",
                         )
+                        if is_meta and resp.status == 403 and ref == referers[-1]:
+                            logger.warning(
+                                "Instagram CDN 403 — ko‘p hostinglar IP bloklangan. "
+                                ".env da HTTPS_PROXY (rezident proxy) yoki tizim HTTPS_PROXY; "
+                                "yoki FastSaver dan tunnel/proxy URL so‘rang."
+                            )
                         continue
                     cl = resp.headers.get("Content-Length")
                     if cl:
@@ -159,6 +226,64 @@ async def _fetch_url_bytes_for_upload(
     except Exception as exc:
         logger.warning("Remote download error: %s", exc)
         return None
+
+
+async def _fetch_instagram_via_ytdlp(page_url: str) -> Optional[bytes]:
+    """
+    Instagram CDN 403 bo‘lganda: `yt-dlp` orqali to‘g‘ridan-to‘g‘ri sahifa URL dan yuklash.
+    Serverda: pip install yt-dlp  (PATH da yt-dlp yoki yt-dlp.exe)
+    """
+    exe = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe")
+    if not exe:
+        return None
+
+    out_dir = tempfile.mkdtemp(prefix="ytdlp_ig_")
+    try:
+        out_tmpl = os.path.join(out_dir, "out.%(ext)s")
+        proc = await asyncio.create_subprocess_exec(
+            exe,
+            "--no-warnings",
+            "--no-playlist",
+            "-f",
+            "best[ext=mp4]/best[height<=720]/best",
+            "-o",
+            out_tmpl,
+            page_url,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.warning("yt-dlp: vaqt tugadi (300s)")
+            return None
+
+        if proc.returncode != 0:
+            err = (stderr or b"").decode("utf-8", errors="replace")[:500]
+            logger.warning("yt-dlp chiqish %s: %s", proc.returncode, err)
+            return None
+
+        files = [
+            os.path.join(out_dir, f)
+            for f in os.listdir(out_dir)
+            if os.path.isfile(os.path.join(out_dir, f))
+        ]
+        if not files:
+            return None
+        fp = max(files, key=os.path.getmtime)
+        sz = os.path.getsize(fp)
+        if sz > _MAX_REMOTE_MEDIA_BYTES:
+            logger.warning("yt-dlp: fayl juda katta (%s bayt)", sz)
+            return None
+        with open(fp, "rb") as fh:
+            return fh.read()
+    except Exception as exc:
+        logger.warning("yt-dlp: %s", exc)
+        return None
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
 
 
 async def send_media_to_user(
@@ -281,6 +406,9 @@ async def send_media_to_user(
                 download_url,
                 page_referer=original_url,
             )
+            if not raw and platform == Platform.INSTAGRAM:
+                logger.info("CDN 403 — yt-dlp bilan qayta urinilmoqda...")
+                raw = await _fetch_instagram_via_ytdlp(original_url)
             if not raw:
                 raise
             if fetch_media_is_video(media_info.media_type):
@@ -432,7 +560,8 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
     
     url = normalize_fetch_url(urls[0])
     platform = detect_platform(url)
-    
+    lang = normalize_language_code(db_user.language_code)
+
     logger.info(f"User {db_user.id} requested: {url} (platform: {platform})")
     
     # Special handling for YouTube - show quality selection
@@ -462,7 +591,13 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
             await status_msg.delete()
             success = await send_carousel_media(bot, message, media_info, session, db_user, url)
             if not success:
-                await message.answer("❌ Media yuklab bo'lmadi.")
+                if platform == Platform.INSTAGRAM:
+                    await message.answer(
+                        get_text("media_download_failed_ig", lang),
+                        parse_mode="HTML",
+                    )
+                else:
+                    await message.answer(get_text("download_error", lang), parse_mode="HTML")
             return
         
         # Send single media
@@ -470,7 +605,13 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
         success = await send_media_to_user(bot, message, media_info, session, db_user, url)
         
         if not success:
-            await message.answer("❌ Media yuklab bo'lmadi. Keyinroq urinib ko'ring.")
+            if platform == Platform.INSTAGRAM:
+                await message.answer(
+                    get_text("media_download_failed_ig", lang),
+                    parse_mode="HTML",
+                )
+            else:
+                await message.answer(get_text("download_error", lang), parse_mode="HTML")
             
     except Exception as e:
         logger.error(f"Error handling URL: {e}")

@@ -399,6 +399,29 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         LANG_RU: "❌ Произошла ошибка. Пожалуйста, попробуйте снова.",
         LANG_EN: "❌ An error occurred. Please try again."
     },
+
+    "media_download_failed_ig": {
+        LANG_UZ: (
+            "❌ Instagram videoni yuborib bo‘lmadi (CDN 403).\n\n"
+            "<b>Serverda:</b> <code>pip install yt-dlp</code> — bot avvalo CDN, ishlamasa <code>yt-dlp</code> bilan yuklaydi.\n"
+            "Yoki <code>HTTPS_PROXY</code> / rezident proxy ni <code>.env</code> ga qo‘shing."
+        ),
+        LANG_UZ_CYRL: (
+            "❌ Instagram видеони юбориб бўлмади (CDN 403).\n\n"
+            "<b>Серверда:</b> <code>pip install yt-dlp</code> — бот аввало CDN, ишламаса <code>yt-dlp</code> билан юклайди.\n"
+            "Ёки <code>HTTPS_PROXY</code> / резидент проксини <code>.env</code> га қўшинг."
+        ),
+        LANG_RU: (
+            "❌ Не удалось отправить Instagram (CDN 403).\n\n"
+            "<b>На сервере:</b> <code>pip install yt-dlp</code> — сначала CDN, иначе загрузка через <code>yt-dlp</code>.\n"
+            "Или добавьте <code>HTTPS_PROXY</code> / резидентный прокси в <code>.env</code>."
+        ),
+        LANG_EN: (
+            "❌ Could not send Instagram media (CDN 403).\n\n"
+            "<b>On the server:</b> <code>pip install yt-dlp</code> — bot tries CDN first, then <code>yt-dlp</code>.\n"
+            "Or set <code>HTTPS_PROXY</code> / residential proxy in <code>.env</code>."
+        ),
+    },
     
     "unsupported_url": {
         LANG_UZ: "❌ Bu havola qo'llab-quvvatlanmaydi.",

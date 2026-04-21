@@ -55,5 +55,27 @@ class Settings(BaseSettings):
     # Gemini API for voice recognition
     GEMINI_API_KEY: Optional[str] = None
 
+    # Instagram CDN: ko‘p serverlar 403 beradi — rezident proxy (HTTPS_PROXY) tavsiya etiladi
+    HTTP_PROXY: Optional[str] = None
+    HTTPS_PROXY: Optional[str] = None
+
+    # Faqat instagram.com/reel/... — eski get-info API (TOKEN_REELS, alohida host)
+    API_BASE_URL_REELS: Optional[str] = None
+    TOKEN_REELS: Optional[str] = None
+
+    @field_validator("API_BASE_URL_REELS", mode="before")
+    @classmethod
+    def reels_base_url(cls, v: Any) -> Optional[str]:
+        if v is None or not str(v).strip():
+            return None
+        return str(v).strip().rstrip("/")
+
+    @field_validator("TOKEN_REELS", mode="before")
+    @classmethod
+    def reels_token(cls, v: Any) -> Optional[str]:
+        if v is None or not str(v).strip():
+            return None
+        return str(v).strip()
+
 
 settings = Settings()
