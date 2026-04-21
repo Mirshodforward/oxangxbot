@@ -51,12 +51,15 @@ async def on_startup(bot: Bot):
     try:
         await bot.set_my_commands([
             BotCommand(command="start", description="Botni ishga tushirish (Start bot)"),
-            BotCommand(command="help", description="Yordam va qoidalar (Help)"),
+            BotCommand(command="help", description="Yordam va buyruqlar (Help)"),
             BotCommand(command="shazam", description="Qo'shiqni aniqlash (Identify song)"),
-            BotCommand(command="search", description="Musiqa qidirish yoki chatga yozing (Search)"),
+            BotCommand(command="search", description="Musiqa qidirish (Search)"),
             BotCommand(command="top", description="Top musiqalar (Top charts)"),
-            BotCommand(command="stats", description="Bot statistikasi (Statistics)"),
+            BotCommand(command="lyrics", description="Qo'shiq matni (Lyrics)"),
+            BotCommand(command="stats", description="Statistika (Statistics)"),
+            BotCommand(command="settings", description="Sozlamalar (Settings)"),
             BotCommand(command="language", description="Tilni o'zgartirish (Change language)"),
+            BotCommand(command="cancel", description="Joriy amalni bekor qilish (Cancel)"),
         ])
         logger.info("Bot commands menu updated")
     except Exception as e:

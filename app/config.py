@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import computed_field
-from typing import Optional
+from pydantic import field_validator
+from typing import Any, Optional
 
 
 class Settings(BaseSettings):
@@ -18,6 +18,20 @@ class Settings(BaseSettings):
     # FastSaverAPI settings
     TOKEN: str  # API token for FastSaverAPI
     API_BASE_URL: str = "https://api.fastsaver.io/v1"
+
+    @field_validator("API_BASE_URL", mode="before")
+    @classmethod
+    def normalize_api_base_url(cls, v: Any) -> str:
+        """Eski .env va /v1 siz hostlarni yangi API ga moslashtirish."""
+        if v is None or (isinstance(v, str) and not v.strip()):
+            return "https://api.fastsaver.io/v1"
+        u = str(v).strip().rstrip("/")
+        low = u.lower()
+        if "fastsaverapi.com" in low:
+            return "https://api.fastsaver.io/v1"
+        if "api.fastsaver.io" in low and "/v1" not in low:
+            return f"{u}/v1"
+        return u
     
     # Database settings
     DATABASE_URL: str

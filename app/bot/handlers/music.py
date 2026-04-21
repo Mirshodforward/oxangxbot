@@ -4,7 +4,7 @@ import re
 import tempfile
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
-from aiogram.filters import Command, CommandObject, BaseFilter, StateFilter
+from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,15 +14,12 @@ from app.database.models import User
 from app.database.repositories import MusicRepository, MusicSearchCacheRepository, CacheStatsRepository
 from app.bot.keyboards import (
     get_main_menu_keyboard,
-    get_cancel_keyboard,
     get_music_results_keyboard,
     get_top_music_keyboard,
     get_recognized_music_keyboard,
     get_youtube_quality_keyboard,
 )
-from app.bot.locales import (
-    get_text, LANG_UZ, LANG_UZ_CYRL, LANG_RU, LANG_EN, normalize_language_code
-)
+from app.bot.locales import get_text, normalize_language_code
 from app.utils.helpers import truncate_text
 
 logger = logging.getLogger(__name__)
@@ -33,29 +30,6 @@ class MusicStates(StatesGroup):
     """FSM states for music features"""
     waiting_for_audio = State()
     waiting_for_search_query = State()
-
-
-_LANGS = (LANG_UZ, LANG_UZ_CYRL, LANG_RU, LANG_EN)
-
-
-def _menu_texts_for(*keys: str) -> frozenset[str]:
-    texts: set[str] = set()
-    for key in keys:
-        for lg in _LANGS:
-            texts.add(get_text(key, lg))
-    return frozenset(texts)
-
-
-# Oddiy matn qidiruvi: menyu tugmalari va buyruqlar bilan aralashmasin
-_PLAIN_MUSIC_SEARCH_EXCLUDED_TEXTS: frozenset[str] = _menu_texts_for(
-    "btn_help",
-    "btn_statistics",
-    "btn_settings",
-    "btn_cancel",
-    "btn_shazam",
-    "btn_top_music",
-    "btn_search_music",
-)
 
 
 def _normalize_search_query(raw: str) -> str:
@@ -87,33 +61,9 @@ def _cached_rows_to_results(rows: list[dict]) -> list[MusicSearchResult]:
     ]
 
 
-class PlainTextMusicSearchFilter(BaseFilter):
-    """Havola/buyruq emas, qisqa matn — musiqa qidiruvi (/search bilan bir xil API)."""
-
-    async def __call__(self, message: Message) -> bool:
-        raw = message.text
-        if not raw or not isinstance(raw, str):
-            return False
-        t = _normalize_search_query(raw)
-        if len(t) < 2:
-            return False
-        if t.startswith("/"):
-            return False
-        low = t.lower()
-        if "http://" in low or "https://" in low or "t.me/" in low:
-            return False
-        if t in _PLAIN_MUSIC_SEARCH_EXCLUDED_TEXTS:
-            return False
-        return True
-
-
 # ==================== SHAZAM ====================
 
 @router.message(Command("shazam"))
-@router.message(F.text.in_({get_text("btn_shazam", LANG_UZ),
-                            get_text("btn_shazam", LANG_UZ_CYRL),
-                            get_text("btn_shazam", LANG_RU),
-                            get_text("btn_shazam", LANG_EN)}))
 async def cmd_shazam(message: Message, state: FSMContext, db_user: User):
     """Start Shazam recognition flow - /shazam"""
     lang = normalize_language_code(db_user.language_code)
@@ -121,7 +71,7 @@ async def cmd_shazam(message: Message, state: FSMContext, db_user: User):
     
     await message.answer(
         get_text("shazam_send_audio", lang),
-        reply_markup=get_cancel_keyboard(lang),
+        reply_markup=get_main_menu_keyboard(lang),
         parse_mode="HTML"
     )
 
@@ -244,13 +194,16 @@ async def _recognize_from_file(
 async def cmd_search(message: Message, command: CommandObject, state: FSMContext, session: AsyncSession, db_user: User):
     """Musiqa qidiruv — /search yoki /s [so'z]"""
     lang = normalize_language_code(db_user.language_code)
+
+    if command.args:
+        await state.clear()
     
     if not command.args:
         # No query provided, ask for it
         await state.set_state(MusicStates.waiting_for_search_query)
         await message.answer(
             get_text("search_enter_query", lang),
-            reply_markup=get_cancel_keyboard(lang),
+            reply_markup=get_main_menu_keyboard(lang),
             parse_mode="HTML"
         )
         return
@@ -261,18 +214,11 @@ async def cmd_search(message: Message, command: CommandObject, state: FSMContext
 
 @router.message(MusicStates.waiting_for_search_query, F.text)
 async def process_search_query(message: Message, state: FSMContext, session: AsyncSession, db_user: User):
-    """Process music search query from state"""
-    # Check for cancel buttons
-    cancel_texts = {
-        get_text("btn_cancel", LANG_UZ),
-        get_text("btn_cancel", LANG_UZ_CYRL),
-        get_text("btn_cancel", LANG_RU),
-        get_text("btn_cancel", LANG_EN)
-    }
-    if message.text in cancel_texts:
-        await state.clear()
+    """Process music search query from state (bekor: /cancel — common handler)."""
+    raw = (message.text or "").strip()
+    if raw.startswith("/"):
         return
-    
+
     await state.clear()
 
     query = _normalize_search_query(message.text)
@@ -632,18 +578,3 @@ async def _get_lyrics(message: Message, shazam_id: str, db_user: User, edit: boo
         await message.answer(get_text("error", lang))
 
 
-# ==================== PLAIN TEXT SEARCH (chatga to'g'ridan-to'g'ri yozish) ====================
-
-
-@router.message(
-    PlainTextMusicSearchFilter(),
-    ~StateFilter(MusicStates.waiting_for_audio, MusicStates.waiting_for_search_query),
-)
-async def plain_text_music_search(
-    message: Message,
-    session: AsyncSession,
-    db_user: User,
-):
-    """Masalan: «Ummon» — /search bilan bir xil /youtube/search API."""
-    query = _normalize_search_query(message.text)
-    await _search_music(message, query, session, db_user, page=1)

@@ -72,10 +72,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 • Qo'shiq matni
 • Ovozli xabar, video, audio orqali aniqlash
 
-🎶 <b>Top va qidiruv:</b> <code>/top</code> — top-chart; <code>/search</code> yoki <code>/s</code> — musiqa qidiruvi.
-🔍 Shuningdek, chatga to'g'ridan qo'shiq yoki ijrochi nomini yozishingiz mumkin (masalan: <code>Ummon</code>).
+🎶 <b>Top va qidiruv:</b> <code>/top</code>, <code>/search</code> yoki <code>/s</code>, <code>/shazam</code>, <code>/lyrics</code>.
+📱 Buyruqlar ro'yxati: Telegramdagi <b>Menu</b> tugmasi yoki <code>/help</code>.
 
-🚀 <b>Boshlash uchun:</b> shunchaki media havolasini yuboring!""",
+🚀 <b>Boshlash uchun:</b> media havolasini yuboring yoki yuqoridagi buyruqlardan foydalaning.""",
         
         LANG_UZ_CYRL: """👋 Салом, {name}!
 
@@ -95,10 +95,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 • Қўшиқ матни
 • Овозли хабар, видео, аудио орқали аниқлаш
 
-🎶 <b>Топ ва қидирув:</b> <code>/top</code> — топ чарт; <code>/search</code> ёки <code>/s</code> — мусиқа қидируви.
-🔍 Шунингдек, чатга тўғридан қўшиқ ёки ижрочи номини ёзишингиз мумкин (масалан: <code>Ummon</code>).
+🎶 <b>Топ ва қидирув:</b> <code>/top</code>, <code>/search</code> ёки <code>/s</code>, <code>/shazam</code>, <code>/lyrics</code>.
+📱 Буйруқлар: Telegram <b>Menu</b> тугмаси ёки <code>/help</code>.
 
-🚀 <b>Бошлаш учун:</b> шунчаки медиа ҳаволасини юборинг!""",
+🚀 <b>Бошлаш учун:</b> медиа ҳаволасини юборинг ёки буйруқлардан фойдаланинг.""",
         
         LANG_RU: """👋 Привет, {name}!
 
@@ -118,10 +118,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 • Текст песни
 • Распознавание через голосовое сообщение, видео, аудио
 
-🎶 <b>Топ и поиск:</b> <code>/top</code> — чарт; <code>/search</code> или <code>/s</code> — поиск музыки.
-🔍 Также можно просто написать в чат название трека или артиста (например: <code>Ummon</code>).
+🎶 <b>Топ и поиск:</b> <code>/top</code>, <code>/search</code> или <code>/s</code>, <code>/shazam</code>, <code>/lyrics</code>.
+📱 Команды: кнопка <b>Menu</b> в Telegram или <code>/help</code>.
 
-🚀 <b>Для начала:</b> просто отправьте ссылку на медиа!""",
+🚀 <b>Для начала:</b> отправьте ссылку на медиа или используйте команды.""",
         
         LANG_EN: """👋 Hello, {name}!
 
@@ -141,10 +141,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 • Song lyrics
 • Recognition via voice message, video, audio
 
-🎶 <b>Top & search:</b> <code>/top</code> — charts; <code>/search</code> or <code>/s</code> — music search.
-🔍 You can also type a song or artist name in the chat (e.g. <code>Ummon</code>).
+🎶 <b>Top & search:</b> <code>/top</code>, <code>/search</code> or <code>/s</code>, <code>/shazam</code>, <code>/lyrics</code>.
+📱 Commands: Telegram <b>Menu</b> button or <code>/help</code>.
 
-🚀 <b>To start:</b> just send a media link!"""
+🚀 <b>To start:</b> send a media link or use the commands above."""
     },
     
     "welcome_new_user": {
@@ -210,6 +210,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         LANG_RU: "❌ Отмена",
         LANG_EN: "❌ Cancel"
     },
+
+    "cancel_done": {
+        LANG_UZ: "✅ Bekor qilindi. Davom etish uchun <code>/help</code> yoki menyudagi buyruqlardan foydalaning.",
+        LANG_UZ_CYRL: "✅ Бекор қилинди. Давом этиш учун <code>/help</code> ёки менюдаги буйруқлардан фойдаланинг.",
+        LANG_RU: "✅ Отменено. Продолжите через <code>/help</code> или команды в меню.",
+        LANG_EN: "✅ Cancelled. Use <code>/help</code> or the commands in the menu to continue.",
+    },
     
     "btn_back": {
         LANG_UZ: "⬅️ Orqaga",
@@ -234,13 +241,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 /shazam - Qo'shiq aniqlash (Shazam)
 /search &lt;nomi&gt; - Musiqa qidirish
 /top - Top musiqalar (Shazam)
-/lyrics &lt;url&gt; - Qo'shiq matni
+/lyrics &lt;shazam_id&gt; - Qo'shiq matni
 
 <b>Asosiy buyruqlar:</b>
 /start - Botni qayta ishga tushirish
 /help - Yordam
 /stats - Statistika
-/language - Tilni o'zgartirish""",
+/settings - Sozlamalar (til — /language)
+/language - Tilni o'zgartirish
+/cancel - Joriy qadamni bekor qilish""",
         
         LANG_UZ_CYRL: """📖 <b>Ёрдам</b>
 
@@ -256,13 +265,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 /shazam - Қўшиқ аниқлаш (Shazam)
 /search &lt;номи&gt; - Мусиқа қидириш
 /top - Топ мусиқалар (Shazam)
-/lyrics &lt;url&gt; - Қўшиқ матни
+/lyrics &lt;shazam_id&gt; - Қўшиқ матни
 
 <b>Асосий буйруқлар:</b>
 /start - Ботни қайта ишга тушириш
 /help - Ёрдам
 /stats - Статистика
-/language - Тилни ўзгартириш""",
+/settings - Созламалар (тил — /language)
+/language - Тилни ўзгартириш
+/cancel - Жорий қадамни бекор қилиш""",
         
         LANG_RU: """📖 <b>Помощь</b>
 
@@ -278,13 +289,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 /shazam - Распознать музыку (Shazam)
 /search &lt;название&gt; - Поиск музыки
 /top - Топ музыка (Shazam)
-/lyrics &lt;url&gt; - Текст песни
+/lyrics &lt;shazam_id&gt; - Текст песни
 
 <b>Основные команды:</b>
 /start - Перезапустить бота
 /help - Помощь
 /stats - Статистика
-/language - Изменить язык""",
+/settings - Настройки (язык — /language)
+/language - Изменить язык
+/cancel - Отменить текущий шаг""",
         
         LANG_EN: """📖 <b>Help</b>
 
@@ -300,13 +313,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 /shazam - Recognize music (Shazam)
 /search &lt;name&gt; - Search music
 /top - Top music (Shazam)
-/lyrics &lt;url&gt; - Song lyrics
+/lyrics &lt;shazam_id&gt; - Song lyrics
 
 <b>Main commands:</b>
 /start - Restart the bot
 /help - Help
 /stats - Statistics
-/language - Change language"""
+/settings - Settings (language — /language)
+/language - Change language
+/cancel - Cancel current step"""
     },
     
     # ============ Statistics ============
@@ -408,10 +423,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
     
     # ============ Shazam ============
     "shazam_send_audio": {
-        LANG_UZ: "🎵 Musiqa uchun video, audio yoki ovozli xabar yuboring:",
-        LANG_UZ_CYRL: "🎵 Мусиқа учун видео, аудио ёки овозли хабар юборинг:",
-        LANG_RU: "🎵 Отправьте видео, аудио или голосовое сообщение для распознавания:",
-        LANG_EN: "🎵 Send video, audio or voice message for recognition:"
+        LANG_UZ: "🎵 Musiqa uchun video, audio yoki ovozli xabar yuboring.\nBekor: <code>/cancel</code>",
+        LANG_UZ_CYRL: "🎵 Мусиқа учун видео, аудио ёки овозли хабар юборинг.\nБекор: <code>/cancel</code>",
+        LANG_RU: "🎵 Отправьте видео, аудио или голосовое для распознавания.\nОтмена: <code>/cancel</code>",
+        LANG_EN: "🎵 Send video, audio or voice for recognition.\nCancel: <code>/cancel</code>"
     },
     
     "shazam_analyzing": {
@@ -430,10 +445,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
     
     # ============ Search ============
     "search_enter_query": {
-        LANG_UZ: "🔍 Qo'shiq nomi yoki ijrochi ismini kiriting:",
-        LANG_UZ_CYRL: "🔍 Қўшиқ номи ёки ижрочи исмини киритинг:",
-        LANG_RU: "🔍 Введите название песни или имя исполнителя:",
-        LANG_EN: "🔍 Enter song title or artist name:"
+        LANG_UZ: "🔍 Qo'shiq nomi yoki ijrochi ismini yozing.\nBekor qilish: <code>/cancel</code>",
+        LANG_UZ_CYRL: "🔍 Қўшиқ номи ёки ижрочи исмини ёзинг.\nБекор қилиш: <code>/cancel</code>",
+        LANG_RU: "🔍 Введите название песни или имя исполнителя.\nОтмена: <code>/cancel</code>",
+        LANG_EN: "🔍 Type the song or artist name.\nCancel: <code>/cancel</code>"
     },
     
     "search_no_results": {

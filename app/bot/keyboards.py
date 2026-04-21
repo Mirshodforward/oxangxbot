@@ -61,13 +61,6 @@ def get_settings_keyboard(lang: str = LANG_UZ) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_cancel_keyboard(lang: str = LANG_UZ) -> ReplyKeyboardMarkup:
-    """Cancel keyboard with localization support"""
-    builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text=get_text("btn_cancel", lang)))
-    return builder.as_markup(resize_keyboard=True)
-
-
 def get_youtube_quality_keyboard(video_id: str) -> InlineKeyboardMarkup:
     """YouTube video quality selection keyboard"""
     builder = InlineKeyboardBuilder()

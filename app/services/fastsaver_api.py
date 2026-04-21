@@ -16,6 +16,25 @@ def _api_ok(data: dict) -> bool:
     return bool(data) and data.get("ok") is True
 
 
+def _error_message_from_body(data: dict[str, Any], status: int) -> str:
+    """FastSaver yoki FastAPI: message / error / detail."""
+    detail = data.get("detail")
+    if isinstance(detail, list):
+        parts = []
+        for x in detail:
+            if isinstance(x, dict):
+                parts.append(str(x.get("msg") or x))
+            else:
+                parts.append(str(x))
+        detail = "; ".join(parts) if parts else None
+    elif detail is not None and not isinstance(detail, str):
+        detail = str(detail)
+    return (
+        (data.get("message") or data.get("error") or detail or "").strip()
+        or f"HTTP {status}"
+    )
+
+
 @dataclass
 class MediaInfo:
     """GET /fetch — ijtimoiy tarmoq media"""
@@ -134,9 +153,15 @@ class FastSaverAPI:
                 async with session.get(url, params=params, headers=self._headers_base()) as response:
                     data = await self._read_json_response(response)
                     if response.status == 422:
-                        return {"ok": False, "message": data.get("detail", "422")}
+                        return {"ok": False, "message": _error_message_from_body(data, 422)}
                     if response.status != 200:
-                        msg = data.get("message") or data.get("error") or f"HTTP {response.status}"
+                        msg = _error_message_from_body(data, response.status)
+                        if response.status == 404:
+                            logger.warning(
+                                "GET %s -> 404 (%s). API_BASE_URL to'g'ri ekanini tekshiring (masalan https://api.fastsaver.io/v1).",
+                                path,
+                                msg,
+                            )
                         return {"ok": False, "message": msg}
                     return data
             except aiohttp.ClientError as e:
@@ -155,7 +180,7 @@ class FastSaverAPI:
                 async with session.post(url, json=body, headers=self._headers_base()) as response:
                     data = await self._read_json_response(response)
                     if response.status not in (200, 201):
-                        msg = data.get("message") or data.get("error") or f"HTTP {response.status}"
+                        msg = _error_message_from_body(data, response.status)
                         return {"ok": False, "message": msg}
                     return data
             except aiohttp.ClientError as e:

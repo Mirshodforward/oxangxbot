@@ -1,6 +1,7 @@
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 from aiogram.filters import CommandStart, Command
+from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -191,10 +192,6 @@ async def cmd_language(message: Message):
 
 
 @router.message(Command("help"))
-@router.message(F.text.in_({get_text("btn_help", LANG_UZ), 
-                            get_text("btn_help", LANG_UZ_CYRL),
-                            get_text("btn_help", LANG_RU), 
-                            get_text("btn_help", LANG_EN)}))
 async def cmd_help(message: Message, db_user: User):
     """Handle /help command"""
     lang = normalize_language_code(db_user.language_code)
@@ -202,10 +199,6 @@ async def cmd_help(message: Message, db_user: User):
 
 
 @router.message(Command("stats"))
-@router.message(F.text.in_({get_text("btn_statistics", LANG_UZ),
-                            get_text("btn_statistics", LANG_UZ_CYRL),
-                            get_text("btn_statistics", LANG_RU),
-                            get_text("btn_statistics", LANG_EN)}))
 async def cmd_stats(message: Message, session: AsyncSession, db_user: User):
     """Show user statistics"""
     lang = normalize_language_code(db_user.language_code)
@@ -234,12 +227,9 @@ async def cmd_stats(message: Message, session: AsyncSession, db_user: User):
     await message.answer(stats_text, parse_mode="HTML")
 
 
-@router.message(F.text.in_({get_text("btn_settings", LANG_UZ),
-                            get_text("btn_settings", LANG_UZ_CYRL),
-                            get_text("btn_settings", LANG_RU),
-                            get_text("btn_settings", LANG_EN)}))
+@router.message(Command("settings"))
 async def cmd_settings(message: Message, db_user: User):
-    """Settings menu"""
+    """Sozlamalar — /settings"""
     lang = normalize_language_code(db_user.language_code)
     await message.answer(
         get_text("settings", lang),
@@ -248,14 +238,13 @@ async def cmd_settings(message: Message, db_user: User):
     )
 
 
-@router.message(F.text.in_({get_text("btn_cancel", LANG_UZ),
-                            get_text("btn_cancel", LANG_UZ_CYRL),
-                            get_text("btn_cancel", LANG_RU),
-                            get_text("btn_cancel", LANG_EN)}))
-async def cancel_action(message: Message, db_user: User):
-    """Cancel current action"""
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext, db_user: User):
+    """Joriy FSM holatini tozalash — /cancel"""
+    await state.clear()
     lang = normalize_language_code(db_user.language_code)
     await message.answer(
-        "❌",
-        reply_markup=get_main_menu_keyboard(lang)
+        get_text("cancel_done", lang),
+        reply_markup=get_main_menu_keyboard(lang),
+        parse_mode="HTML",
     )
