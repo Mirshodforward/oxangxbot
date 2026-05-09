@@ -1,6 +1,9 @@
 import logging
 import os
 import re
+import asyncio
+import html
+import shutil
 import tempfile
 from typing import Optional
 
@@ -33,6 +36,120 @@ from app.utils.helpers import truncate_text
 
 logger = logging.getLogger(__name__)
 router = Router(name="music")
+
+_SHAZAM_VIDEO_EXTS = frozenset({".mp4", ".webm", ".mov", ".mkv", ".m4v"})
+
+
+def _which_ffmpeg() -> Optional[str]:
+    for name in ("ffmpeg", "ffmpeg.exe"):
+        p = shutil.which(name)
+        if p:
+            return p
+    return None
+
+
+async def _extract_aac_clip_for_shazam(
+    video_path: str, max_seconds: int = 120
+) -> Optional[str]:
+    """Videodan mono AAC (birinchi ~2 daq) — ba'zi Shazam endpointlari uchun aniqroq."""
+    ffmpeg = _which_ffmpeg()
+    if not ffmpeg:
+        return None
+    out = tempfile.NamedTemporaryFile(suffix=".m4a", delete=False).name
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            ffmpeg,
+            "-nostdin",
+            "-y",
+            "-i",
+            video_path,
+            "-vn",
+            "-ac",
+            "1",
+            "-acodec",
+            "aac",
+            "-b:a",
+            "128k",
+            "-t",
+            str(max_seconds),
+            out,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+        if proc.returncode != 0:
+            logger.warning(
+                "ffmpeg→m4a (shazam): %s",
+                (stderr or b"").decode("utf-8", errors="replace")[:500],
+            )
+            try:
+                os.unlink(out)
+            except OSError:
+                pass
+            return None
+        return out
+    except Exception as exc:
+        logger.warning("ffmpeg→m4a (shazam): %s", exc)
+        try:
+            os.unlink(out)
+        except OSError:
+            pass
+        return None
+
+
+def _search_query_from_message_caption(caption: Optional[str]) -> str:
+    """Video caption: Instagram matni + pastdagi footer; HTML va havolalar tozalanadi."""
+    if not caption:
+        return ""
+    body = caption
+    for marker in (
+        "orqali yuklab olindi",
+        "орқали юклаб олинди",
+        "Downloaded via",
+        "Скачано через",
+    ):
+        idx = body.find(marker)
+        if idx != -1:
+            body = body[:idx]
+            break
+    plain = re.sub(r"<[^>]+>", " ", body)
+    plain = re.sub(r"https?://\S+", " ", plain)
+    return _normalize_search_query(plain)
+
+
+async def _shazam_caption_youtube_fallback(
+    bot: Bot,
+    message: Message,
+    session: AsyncSession,
+    db_user: User,
+    lang: str,
+    status_msg: Message,
+) -> bool:
+    """Shazam yiqilsa — post captiondan YouTube qidiruv + MP3."""
+    q = _search_query_from_message_caption(message.caption)
+    if len(q) < 3:
+        return False
+    try:
+        await status_msg.edit_text("🔎 Post matni bo‘yicha qidirilmoqda…")
+    except Exception:
+        pass
+    stats_repo = CacheStatsRepository(session)
+    ok, found, _ = await api.search_music(q, page=1)
+    await stats_repo.log_api_call("music", 1)
+    if not ok or not found:
+        return False
+    musics = found[:5]
+    safe_q = html.escape(truncate_text(q, 180))
+    text = (
+        f"🔎 <b>Qidiruv:</b> {safe_q}\n\n"
+        f"<i>Video ovozini Shazam tan olmadi — YouTube variantlari:</i>"
+    )
+    keyboard = get_recognized_music_keyboard(musics, None)
+    await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+    pv = _first_youtube_id_from_results(musics)
+    if pv:
+        await _try_auto_mp3_after_shazam(bot, message, session, db_user, pv)
+    return True
 
 
 def _shazam_upload_suffix(message: Message, telegram_file_path: Optional[str]) -> str:
@@ -299,6 +416,19 @@ async def _recognize_from_file(
         try:
             await bot.download_file(tg_file.file_path, tmp_path)
             result = await api.recognize_music_file(tmp_path)
+            ext_lc = (os.path.splitext(tmp_path)[1] or "").lower()
+            if result.error and ext_lc in _SHAZAM_VIDEO_EXTS:
+                aac_path = await _extract_aac_clip_for_shazam(tmp_path)
+                if aac_path:
+                    try:
+                        r2 = await api.recognize_music_file(aac_path)
+                        if not r2.error:
+                            result = r2
+                    finally:
+                        try:
+                            os.unlink(aac_path)
+                        except OSError:
+                            pass
         finally:
             try:
                 os.unlink(tmp_path)
@@ -306,9 +436,13 @@ async def _recognize_from_file(
                 pass
 
         if result.error:
+            if await _shazam_caption_youtube_fallback(
+                bot, message, session, db_user, lang, status_msg
+            ):
+                return
             await status_msg.edit_text(get_text("shazam_not_found", lang))
             return
-        
+
         # Save to database
         music_repo = MusicRepository(session)
         await music_repo.create(

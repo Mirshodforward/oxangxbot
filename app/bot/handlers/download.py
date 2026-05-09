@@ -326,6 +326,19 @@ async def _fetch_instagram_via_ytdlp(page_url: str) -> Optional[bytes]:
         shutil.rmtree(out_dir, ignore_errors=True)
 
 
+def _download_reply_caption(
+    lang: str,
+    bot_username: str,
+    post_caption: Optional[str],
+) -> str:
+    """Post matni + pastda 'yuklab olindi' — musiqa tugmasi captiondan qidiruv uchun."""
+    footer = get_text("downloaded_via", lang, bot_username=bot_username)
+    raw = (post_caption or "").strip()
+    if not raw:
+        return footer
+    return f"{truncate_text(raw, 850)}\n\n{footer}"
+
+
 async def send_media_to_user(
     bot: Bot,
     message: Message,
@@ -345,16 +358,18 @@ async def send_media_to_user(
         bot_username = bot_me.username
     except Exception:
         bot_username = "Oxangxbot"
-    
-    caption_text = get_text("downloaded_via", lang, bot_username=bot_username)
+
+    post_caption = (media_info.caption or "").strip() or None
     yt_vid = extract_youtube_video_id(original_url)
     keyboard = get_download_keyboard(lang, youtube_video_id=yt_vid)
-    
+
     url_hash = get_url_hash(original_url)
-    
+
     # Check cache for file_id
     cached = await cache_repo.get_by_hash(url_hash)
     if cached and cached.file_id:
+        cap_src = (cached.caption or "").strip() or post_caption
+        caption_text = _download_reply_caption(lang, bot_username, cap_src)
         try:
             # Send cached file
             if cached.media_type == MediaType.VIDEO or fetch_media_is_video(media_info.media_type):
@@ -403,7 +418,9 @@ async def send_media_to_user(
         download_url = media_info.download_url
         if not download_url:
             return False
-        
+
+        caption_text = _download_reply_caption(lang, bot_username, post_caption)
+
         media_type = (
             MediaType.VIDEO if fetch_media_is_video(media_info.media_type) else MediaType.IMAGE
         )
