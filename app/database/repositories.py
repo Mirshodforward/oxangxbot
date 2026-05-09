@@ -180,20 +180,34 @@ class CacheRepository:
         file_id_audio: Optional[str] = None,
         expires_hours: int = 240  # 10 kun
     ) -> CachedMedia:
-        """Create or update cached media"""
+        """Create or update cached media (url_hash unique — muddati tugagan qatorni ham yangilash)."""
         from datetime import timedelta
-        
-        existing = await self.get_by_hash(url_hash)
+
+        result = await self.session.execute(
+            select(CachedMedia).where(CachedMedia.url_hash == url_hash)
+        )
+        existing = result.scalar_one_or_none()
+
         if existing:
-            # Update existing
+            existing.original_url = original_url
+            existing.platform = platform
+            if media_type is not None:
+                existing.media_type = media_type
+            if shortcode is not None:
+                existing.shortcode = shortcode
             existing.download_url = download_url or existing.download_url
-            existing.file_id = file_id or existing.file_id
-            existing.file_id_audio = file_id_audio or existing.file_id_audio
+            existing.thumb_url = thumb_url or existing.thumb_url
+            if caption is not None:
+                existing.caption = caption[:500] if caption else None
+            existing.file_id = file_id if file_id is not None else existing.file_id
+            existing.file_id_audio = (
+                file_id_audio if file_id_audio is not None else existing.file_id_audio
+            )
             existing.expires_at = datetime.utcnow() + timedelta(hours=expires_hours)
             await self.session.commit()
+            await self.session.refresh(existing)
             return existing
-        
-        # Create new
+
         cached = CachedMedia(
             url_hash=url_hash,
             original_url=original_url,
@@ -205,7 +219,7 @@ class CacheRepository:
             caption=caption[:500] if caption else None,
             file_id=file_id,
             file_id_audio=file_id_audio,
-            expires_at=datetime.utcnow() + timedelta(hours=expires_hours)
+            expires_at=datetime.utcnow() + timedelta(hours=expires_hours),
         )
         self.session.add(cached)
         await self.session.commit()
