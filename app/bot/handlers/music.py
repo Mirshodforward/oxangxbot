@@ -8,7 +8,7 @@ import tempfile
 from typing import Optional
 
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -30,6 +30,7 @@ from app.bot.keyboards import (
     get_top_music_keyboard,
     get_recognized_music_keyboard,
     get_youtube_quality_keyboard,
+    format_numbered_tracks_message,
 )
 from app.bot.locales import get_text, normalize_language_code
 from app.utils.helpers import truncate_text
@@ -138,17 +139,15 @@ async def _shazam_caption_youtube_fallback(
     await stats_repo.log_api_call("music", 1)
     if not ok or not found:
         return False
-    musics = found[:5]
-    safe_q = html.escape(truncate_text(q, 180))
-    text = (
-        f"🔎 <b>Qidiruv:</b> {safe_q}\n\n"
-        f"<i>Video ovozini Shazam tan olmadi — YouTube variantlari:</i>"
-    )
-    keyboard = get_recognized_music_keyboard(musics, None)
+    valid = _youtube_results_only(found[:10])
+    if not valid:
+        return False
+    header = valid[0].title if valid else q
+    safe_q = html.escape(truncate_text(q, 160))
+    footer = f"<i>🔎 {safe_q}\nShazam videoni tan olmadi</i>"
+    text = format_numbered_tracks_message(header, valid, footer_html=footer)
+    keyboard = get_recognized_music_keyboard(valid, None)
     await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
-    pv = _first_youtube_id_from_results(musics)
-    if pv:
-        await _try_auto_mp3_after_shazam(bot, message, session, db_user, pv)
     return True
 
 
@@ -198,11 +197,43 @@ def _looks_like_youtube_video_id(vid: str) -> bool:
     return bool(re.fullmatch(r"[a-zA-Z0-9_-]{11}", s))
 
 
-def _first_youtube_id_from_results(musics: list[MusicSearchResult]) -> Optional[str]:
-    for m in musics:
-        if _looks_like_youtube_video_id(m.shortcode):
-            return m.shortcode.strip()
-    return None
+def _youtube_results_only(musics: list[MusicSearchResult]) -> list[MusicSearchResult]:
+    return [m for m in musics if _looks_like_youtube_video_id(m.shortcode)][:10]
+
+
+def _format_top_musics_block(
+    musics: list[dict],
+    page: int,
+    country: str,
+) -> Optional[tuple[str, InlineKeyboardMarkup]]:
+    """Raqamli ro'yxat matni + Video/raqam klaviaturasi."""
+    rows = [
+        MusicSearchResult(
+            title=d.get("title", "") or "",
+            shortcode=d.get("shortcode", "") or "",
+            duration=str(d.get("duration", "") or ""),
+            thumb=d.get("thumb", "") or "",
+            thumb_best=d.get("thumb_best"),
+        )
+        for d in musics
+    ]
+    valid = _youtube_results_only(rows)
+    if not valid:
+        return None
+    header = valid[0].title if valid else "Top"
+    country_names = {
+        "world": "🌍 World",
+        "UZ": "🇺🇿 Uzbekistan",
+        "RU": "🇷🇺 Russia",
+        "US": "🇺🇸 USA",
+        "GB": "🇬🇧 UK",
+        "TR": "🇹🇷 Turkey",
+    }
+    cn = country_names.get(country, country)
+    footer = f"<i>🔝 {html.escape(str(cn))} · {page}-sahifa</i>"
+    text = format_numbered_tracks_message(header, valid, footer_html=footer)
+    keyboard = get_top_music_keyboard(musics, page=page, country=country)
+    return text, keyboard
 
 
 async def _try_auto_mp3_after_shazam(
@@ -454,7 +485,7 @@ async def _recognize_from_file(
             is_success=True
         )
 
-        musics: list[MusicSearchResult] = list(result.musics or [])
+        musics = list(result.musics or [])
         if not musics and (result.title or result.artist):
             fb_q = _normalize_search_query(
                 f"{result.artist or ''} {result.title or ''}".strip()
@@ -464,27 +495,34 @@ async def _recognize_from_file(
                 ok, found, _ = await api.search_music(fb_q, page=1)
                 await stats_repo.log_api_call("music", 1)
                 if ok and found:
-                    musics = found[:5]
+                    musics = found[:10]
 
-        # Format response
-        text = f"""🎵 <b>{get_text("download_success", lang)}</b>
+        valid = _youtube_results_only(musics)
+        header = " — ".join(
+            x for x in [result.artist, result.title] if (x or "").strip()
+        ).strip()
+        if not header and valid:
+            header = valid[0].title
+        if not header:
+            header = get_text("download_success", lang)
 
-🎤 <b>Artist:</b> {result.artist or 'Unknown'}
-🎶 <b>Track:</b> {result.title or 'Unknown'}
+        if valid:
+            text = format_numbered_tracks_message(header, valid)
+        else:
+            text = f"""🎵 <b>{get_text("download_success", lang)}</b>
+
+🎤 <b>Artist:</b> {html.escape(result.artist or "Unknown")}
+🎶 <b>Track:</b> {html.escape(result.title or "Unknown")}
 """
-        if musics and not (result.musics or []):
-            text += "\n🔎 <i>YouTube qidiruv orqali variantlar</i>"
+            if musics and not valid:
+                text += "\n\n<i>YouTube havolalari topilmadi — /search bilan qidiring.</i>"
 
         keyboard = None
-        if musics or result.track_id:
-            keyboard = get_recognized_music_keyboard(musics, result.track_id)
+        if valid or result.track_id:
+            keyboard = get_recognized_music_keyboard(valid, result.track_id)
 
         await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
 
-        primary_vid = _first_youtube_id_from_results(musics)
-        if primary_vid:
-            await _try_auto_mp3_after_shazam(bot, message, session, db_user, primary_vid)
-        
     except Exception as e:
         logger.error(f"Error recognizing music: {e}")
         await status_msg.edit_text(get_text("error", lang))
@@ -573,12 +611,21 @@ async def _search_music(
             logger.info(f"Music search cache hit: query='{query}', page={page}")
 
             cached_results = _cached_rows_to_results(cached_raw)
-            keyboard = get_music_results_keyboard(cached_results, page=page, query=query)
-            text = f"""🔍 <b>{get_text("search_results", lang)}</b> "{query}"
-
-📄 Page: {page}
-⚡ <i>Keshdan yuklandi</i>
-"""
+            valid = _youtube_results_only(cached_results)
+            if not valid:
+                await status_msg.edit_text(get_text("search_no_results", lang))
+                return
+            header = valid[0].title if valid else query
+            footer = (
+                f"<i>🔍 {html.escape(truncate_text(query, 120))} · "
+                f"{page}-sahifa · ⚡ kesh</i>"
+            )
+            text = format_numbered_tracks_message(
+                header, valid, footer_html=footer
+            )
+            keyboard = get_music_results_keyboard(
+                cached_results, page=page, query=query
+            )
             await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
             return
         
@@ -604,13 +651,18 @@ async def _search_music(
             for r in results
         ]
         await cache_repo.cache_results(query, page, results_for_cache)  # 10 kun default
-        
-        keyboard = get_music_results_keyboard(results, page=page, query=query)
-        
-        text = f"""🔍 <b>{get_text("search_results", lang)}</b> "{query}"
 
-📄 Page: {page}
-"""
+        valid = _youtube_results_only(results)
+        if not valid:
+            await status_msg.edit_text(get_text("search_no_results", lang))
+            return
+        header = valid[0].title if valid else query
+        footer = (
+            f"<i>🔍 {html.escape(truncate_text(query, 120))} · {page}-sahifa</i>"
+        )
+        text = format_numbered_tracks_message(header, valid, footer_html=footer)
+        keyboard = get_music_results_keyboard(results, page=page, query=query)
+
         await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         
     except Exception as e:
@@ -650,12 +702,21 @@ async def music_search_pagination(
             await stats_repo.log_cache_hit("music", 1)
 
             cached_results = _cached_rows_to_results(cached_raw)
-            keyboard = get_music_results_keyboard(cached_results, page=page, query=query)
-            text = f"""🔍 <b>{get_text("search_results", lang)}</b> "{query}"
-
-📄 Page: {page}
-⚡ <i>Keshdan</i>
-"""
+            valid = _youtube_results_only(cached_results)
+            if not valid:
+                await callback.message.edit_text(get_text("search_no_results", lang))
+                return
+            header = valid[0].title if valid else query
+            footer = (
+                f"<i>🔍 {html.escape(truncate_text(query, 120))} · "
+                f"{page}-sahifa · ⚡ kesh</i>"
+            )
+            text = format_numbered_tracks_message(
+                header, valid, footer_html=footer
+            )
+            keyboard = get_music_results_keyboard(
+                cached_results, page=page, query=query
+            )
             await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
             return
         
@@ -679,13 +740,18 @@ async def music_search_pagination(
             for r in results
         ]
         await cache_repo.cache_results(query, page, results_for_cache)  # 10 kun default
-        
-        keyboard = get_music_results_keyboard(results, page=page, query=query)
-        
-        text = f"""🔍 <b>{get_text("search_results", lang)}</b> "{query}"
 
-📄 Page: {page}
-"""
+        valid = _youtube_results_only(results)
+        if not valid:
+            await callback.message.edit_text(get_text("search_no_results", lang))
+            return
+        header = valid[0].title if valid else query
+        footer = (
+            f"<i>🔍 {html.escape(truncate_text(query, 120))} · {page}-sahifa</i>"
+        )
+        text = format_numbered_tracks_message(header, valid, footer_html=footer)
+        keyboard = get_music_results_keyboard(results, page=page, query=query)
+
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         
     except Exception as e:
@@ -722,22 +788,12 @@ async def _show_top_musics(message: Message, country: str, db_user: User, page: 
         if not success or not musics:
             await status_msg.edit_text(get_text("search_no_results", lang))
             return
-        
-        keyboard = get_top_music_keyboard(musics, page=page, country=country)
-        
-        country_names = {
-            "world": "🌍 World",
-            "UZ": "🇺🇿 Uzbekistan",
-            "RU": "🇷🇺 Russia",
-            "US": "🇺🇸 USA",
-            "GB": "🇬🇧 UK",
-            "TR": "🇹🇷 Turkey"
-        }
-        
-        text = f"""🔝 <b>Top Music</b> - {country_names.get(country, country)}
 
-📄 Page: {page}
-"""
+        block = _format_top_musics_block(musics, page, country)
+        if not block:
+            await status_msg.edit_text(get_text("search_no_results", lang))
+            return
+        text, keyboard = block
         await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         
     except Exception as e:
@@ -761,22 +817,12 @@ async def top_musics_by_country(callback: CallbackQuery, db_user: User):
         if not success or not musics:
             await callback.message.edit_text(get_text("search_no_results", lang))
             return
-        
-        keyboard = get_top_music_keyboard(musics, page=1, country=country)
-        
-        country_names = {
-            "world": "🌍 World",
-            "UZ": "🇺🇿 Uzbekistan",
-            "RU": "🇷🇺 Russia",
-            "US": "🇺🇸 USA",
-            "GB": "🇬🇧 UK",
-            "TR": "🇹🇷 Turkey"
-        }
-        
-        text = f"""🔝 <b>Top Music</b> - {country_names.get(country, country)}
 
-📄 Page: 1
-"""
+        block = _format_top_musics_block(musics, page=1, country=country)
+        if not block:
+            await callback.message.edit_text(get_text("search_no_results", lang))
+            return
+        text, keyboard = block
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         
     except Exception as e:
@@ -804,22 +850,12 @@ async def top_musics_pagination(callback: CallbackQuery, db_user: User):
         if not success or not musics:
             await callback.message.edit_text(get_text("search_no_results", lang))
             return
-        
-        keyboard = get_top_music_keyboard(musics, page=page, country=country)
-        
-        country_names = {
-            "world": "🌍 World",
-            "UZ": "🇺🇿 Uzbekistan",
-            "RU": "🇷🇺 Russia",
-            "US": "🇺🇸 USA",
-            "GB": "🇬🇧 UK",
-            "TR": "🇹🇷 Turkey"
-        }
-        
-        text = f"""🔝 <b>Top Music</b> - {country_names.get(country, country)}
 
-📄 Page: {page}
-"""
+        block = _format_top_musics_block(musics, page, country)
+        if not block:
+            await callback.message.edit_text(get_text("search_no_results", lang))
+            return
+        text, keyboard = block
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
         
     except Exception as e:
@@ -827,6 +863,26 @@ async def top_musics_pagination(callback: CallbackQuery, db_user: User):
 
 
 # ==================== DOWNLOAD MUSIC ====================
+
+@router.callback_query(F.data.startswith("pick_mp3:"))
+async def callback_pick_mp3(
+    callback: CallbackQuery,
+    bot: Bot,
+    session: AsyncSession,
+    db_user: User,
+):
+    """Raqam tugmasi — tanlangan YouTube treki uchun MP3."""
+    parts = callback.data.split(":", 1)
+    if len(parts) != 2:
+        await callback.answer("❌ Noto‘g‘ri", show_alert=True)
+        return
+    vid = parts[1].strip()
+    if not _looks_like_youtube_video_id(vid):
+        await callback.answer("❌ Noto‘g‘ri", show_alert=True)
+        return
+    await callback.answer("📥 MP3 yuklanmoqda…")
+    await _try_auto_mp3_after_shazam(bot, callback.message, session, db_user, vid)
+
 
 @router.callback_query(F.data.startswith("music:"))
 async def download_music(callback: CallbackQuery, db_user: User):

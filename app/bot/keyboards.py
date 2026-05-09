@@ -7,6 +7,8 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from typing import Optional, List
+import html
+import re
 
 from app.services.fastsaver_api import MusicSearchResult
 from app.bot.locales import (
@@ -61,6 +63,94 @@ def get_settings_keyboard(lang: str = LANG_UZ) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def _youtube_id_ok(v: str) -> bool:
+    s = (v or "").strip()
+    return bool(re.fullmatch(r"[a-zA-Z0-9_-]{11}", s))
+
+
+def format_numbered_tracks_message(
+    header: str,
+    musics: List[MusicSearchResult],
+    *,
+    max_lines: int = 10,
+    footer_html: Optional[str] = None,
+) -> str:
+    """Skrinshotdagi kabi: sarlavha + raqamli ro'yxat (nomi + davomiylik)."""
+    h = html.escape((header or "").strip() or "—")
+    lines = [f"🎵 <b>{h}</b>"]
+    for i, m in enumerate(musics[:max_lines], 1):
+        tit = html.escape((m.title or "—").strip())
+        dur = html.escape(str(m.duration or "").strip())
+        suf = f" {dur}" if dur else ""
+        lines.append(f"{i}. {tit}{suf}")
+    body = "\n".join(lines)
+    if footer_html:
+        return f"{body}\n\n{footer_html}"
+    return body
+
+
+def _dict_to_music_result(d: dict) -> MusicSearchResult:
+    return MusicSearchResult(
+        title=d.get("title", "") or "",
+        shortcode=d.get("shortcode", "") or "",
+        duration=str(d.get("duration", "") or ""),
+        thumb=d.get("thumb", "") or "",
+        thumb_best=d.get("thumb_best"),
+    )
+
+
+def get_track_pick_keyboard(
+    musics: List[MusicSearchResult],
+    shazam_id: Optional[str] = None,
+    nav_row: Optional[List[InlineKeyboardButton]] = None,
+) -> InlineKeyboardMarkup:
+    """
+    Video — birinchi trek uchun sifat tanlash (mavjud music: handler).
+    1..N — pick_mp3:video_id (to'g'ridan-to'g'ri MP3).
+    """
+    builder = InlineKeyboardBuilder()
+    valid = [m for m in musics[:10] if _youtube_id_ok(m.shortcode)]
+    if not valid:
+        if shazam_id:
+            builder.row(
+                InlineKeyboardButton(
+                    text="📝 Matnini ko'rish",
+                    callback_data=f"lyrics:{shazam_id}",
+                )
+            )
+        if nav_row:
+            builder.row(*nav_row)
+        return builder.as_markup()
+
+    first_id = valid[0].shortcode.strip()
+    builder.row(
+        InlineKeyboardButton(text="🎞️ Video", callback_data=f"music:{first_id}")
+    )
+    row: List[InlineKeyboardButton] = []
+    for i, m in enumerate(valid):
+        row.append(
+            InlineKeyboardButton(
+                text=str(i + 1),
+                callback_data=f"pick_mp3:{m.shortcode.strip()}",
+            )
+        )
+        if len(row) == 5:
+            builder.row(*row)
+            row = []
+    if row:
+        builder.row(*row)
+    if shazam_id:
+        builder.row(
+            InlineKeyboardButton(
+                text="📝 Matnini ko'rish",
+                callback_data=f"lyrics:{shazam_id}",
+            )
+        )
+    if nav_row:
+        builder.row(*nav_row)
+    return builder.as_markup()
+
+
 def get_youtube_quality_keyboard(video_id: str) -> InlineKeyboardMarkup:
     """YouTube video quality selection keyboard"""
     builder = InlineKeyboardBuilder()
@@ -108,36 +198,27 @@ def get_music_results_keyboard(
     page: int = 1,
     query: str = ""
 ) -> InlineKeyboardMarkup:
-    """Music search results keyboard"""
-    builder = InlineKeyboardBuilder()
-    
-    for i, result in enumerate(results[:10]):  # Max 10 results
-        # Truncate title if too long
-        title = result.title[:35] + "..." if len(result.title) > 35 else result.title
-        builder.add(InlineKeyboardButton(
-            text=f"{i + 1}. {title}",
-            callback_data=f"music:{result.shortcode}"
-        ))
-    
-    builder.adjust(1)  # 1 button per row
-    
-    # Pagination
-    nav_buttons = []
+    """YouTube qidiruv: Video + raqamlar + pagination."""
+    nav_buttons: List[InlineKeyboardButton] = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton(
-            text="⬅️ Oldingi",
-            callback_data=f"music_page:{page - 1}:{query}"
-        ))
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="⬅️ Oldingi",
+                callback_data=f"music_page:{page - 1}:{query}",
+            )
+        )
     if len(results) >= 10 and page < 3:
-        nav_buttons.append(InlineKeyboardButton(
-            text="Keyingi ➡️",
-            callback_data=f"music_page:{page + 1}:{query}"
-        ))
-    
-    if nav_buttons:
-        builder.row(*nav_buttons)
-    
-    return builder.as_markup()
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Keyingi ➡️",
+                callback_data=f"music_page:{page + 1}:{query}",
+            )
+        )
+    return get_track_pick_keyboard(
+        results[:10],
+        shazam_id=None,
+        nav_row=nav_buttons if nav_buttons else None,
+    )
 
 
 def get_top_music_keyboard(
@@ -145,70 +226,40 @@ def get_top_music_keyboard(
     page: int = 1,
     country: str = "world"
 ) -> InlineKeyboardMarkup:
-    """Top musics keyboard"""
-    builder = InlineKeyboardBuilder()
-    
-    for i, music in enumerate(musics[:10]):
-        title = music.get("title", "Unknown")
-        title = title[:35] + "..." if len(title) > 35 else title
-        shortcode = music.get("shortcode", "")
-        builder.add(InlineKeyboardButton(
-            text=f"{i + 1}. {title}",
-            callback_data=f"music:{shortcode}"
-        ))
-    
-    builder.adjust(1)
-    
-    # Pagination
-    nav_buttons = []
+    """Top chart: Video + raqamlar + pagination."""
+    ms = [_dict_to_music_result(m) for m in musics[:10]]
+    nav_buttons: List[InlineKeyboardButton] = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton(
-            text="⬅️ Oldingi",
-            callback_data=f"top_page:{page - 1}:{country}"
-        ))
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="⬅️ Oldingi",
+                callback_data=f"top_page:{page - 1}:{country}",
+            )
+        )
     if len(musics) >= 10 and page < 3:
-        nav_buttons.append(InlineKeyboardButton(
-            text="Keyingi ➡️",
-            callback_data=f"top_page:{page + 1}:{country}"
-        ))
-    
-    if nav_buttons:
-        builder.row(*nav_buttons)
-    
-    return builder.as_markup()
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text="Keyingi ➡️",
+                callback_data=f"top_page:{page + 1}:{country}",
+            )
+        )
+    return get_track_pick_keyboard(
+        ms,
+        shazam_id=None,
+        nav_row=nav_buttons if nav_buttons else None,
+    )
 
 
 def get_recognized_music_keyboard(
     musics: list[MusicSearchResult],
     shazam_id: Optional[str] = None,
 ) -> InlineKeyboardMarkup:
-    """Keyboard for recognized music results"""
-    builder = InlineKeyboardBuilder()
-    
-    # Add download options for found musics
-    for i, music in enumerate(musics[:5]):
-        title = music.title[:30] + "..." if len(music.title) > 30 else music.title
-        builder.add(InlineKeyboardButton(
-            text=f"🎵 {title}",
-            callback_data=f"music:{music.shortcode}"
-        ))
-    
-    builder.adjust(1)
-    
-    # GET /shazam/lyrics?shazam_id=...
-    if shazam_id:
-        builder.row(InlineKeyboardButton(
-            text="📝 Matnini ko'rish",
-            callback_data=f"lyrics:{shazam_id}",
-        ))
-    
-    return builder.as_markup()
+    """Shazam natijasi: Video + raqamlar + lyrics."""
+    return get_track_pick_keyboard(musics[:10], shazam_id=shazam_id, nav_row=None)
 
 
 def get_country_selection_keyboard() -> InlineKeyboardMarkup:
-    """Country selection for top musics"""
     builder = InlineKeyboardBuilder()
-    
     countries = [
         ("🌍 Dunyo", "world"),
         ("🇺🇿 O'zbekiston", "UZ"),
