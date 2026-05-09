@@ -12,8 +12,15 @@ from aiogram.fsm.state import State, StatesGroup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.fastsaver_api import api, MusicSearchResult
-from app.database.models import User
-from app.database.repositories import MusicRepository, MusicSearchCacheRepository, CacheStatsRepository
+from app.database.models import User, Platform, MediaType
+from app.database.repositories import (
+    MusicRepository,
+    MusicSearchCacheRepository,
+    CacheStatsRepository,
+    YouTubeCacheRepository,
+    DownloadRepository,
+    UserRepository,
+)
 from app.bot.keyboards import (
     get_main_menu_keyboard,
     get_music_results_keyboard,
@@ -67,6 +74,107 @@ def _shazam_upload_suffix(message: Message, telegram_file_path: Optional[str]) -
     if message.audio or message.voice:
         return ".ogg"
     return ".mp4"
+
+
+def _looks_like_youtube_video_id(vid: str) -> bool:
+    s = (vid or "").strip()
+    return bool(re.fullmatch(r"[a-zA-Z0-9_-]{11}", s))
+
+
+def _first_youtube_id_from_results(musics: list[MusicSearchResult]) -> Optional[str]:
+    for m in musics:
+        if _looks_like_youtube_video_id(m.shortcode):
+            return m.shortcode.strip()
+    return None
+
+
+async def _try_auto_mp3_after_shazam(
+    bot: Bot,
+    message: Message,
+    session: AsyncSession,
+    db_user: User,
+    video_id: str,
+) -> None:
+    """Shazam / qidiruv natijasidagi YouTube video uchun MP3 (tg-bot file_id), kesh bilan."""
+    if not _looks_like_youtube_video_id(video_id):
+        return
+    try:
+        bot_me = await bot.get_me()
+        bot_username = f"@{bot_me.username}"
+    except Exception:
+        return
+
+    yt_cache = YouTubeCacheRepository(session)
+    stats_repo = CacheStatsRepository(session)
+    download_repo = DownloadRepository(session)
+    user_repo = UserRepository(session)
+    api_cost = 7
+
+    cached = await yt_cache.get_cached(video_id, "mp3")
+    if cached and cached.file_id:
+        try:
+            await stats_repo.log_cache_hit("youtube", api_cost)
+            await message.answer_audio(
+                audio=cached.file_id,
+                caption=(
+                    "🎵 <b>MP3</b> <i>(kesh)</i>\n"
+                    "Shazam / YouTube natijasidagi 1-top"
+                ),
+                parse_mode="HTML",
+            )
+            await download_repo.create(
+                user_id=db_user.id,
+                url=f"https://youtube.com/watch?v={video_id}",
+                platform=Platform.YOUTUBE,
+                shortcode=video_id,
+                media_type=MediaType.AUDIO,
+                file_id=cached.file_id,
+                is_success=True,
+            )
+            await user_repo.increment_downloads(db_user.id)
+        except Exception as exc:
+            logger.warning("Shazam auto MP3 (kesh): %s", exc)
+        return
+
+    try:
+        result = await api.download_youtube(video_id, "mp3", bot_username)
+        await stats_repo.log_api_call("youtube", api_cost)
+    except Exception as exc:
+        logger.warning("Shazam auto MP3 API: %s", exc)
+        return
+
+    if result.error or not result.file_id:
+        return
+
+    try:
+        sent = await message.answer_audio(
+            audio=result.file_id,
+            caption=(
+                "🎵 <b>MP3</b>\n"
+                "Shazam / YouTube natijasidagi 1-top"
+            ),
+            parse_mode="HTML",
+        )
+        sent_fid = sent.audio.file_id if sent and sent.audio else result.file_id
+        await yt_cache.cache_download(
+            video_id=video_id,
+            format="mp3",
+            file_id=sent_fid or result.file_id,
+            media_type="audio",
+            expires_hours=240,
+        )
+        await download_repo.create(
+            user_id=db_user.id,
+            url=f"https://youtube.com/watch?v={video_id}",
+            platform=Platform.YOUTUBE,
+            shortcode=video_id,
+            media_type=MediaType.AUDIO,
+            file_id=sent_fid or result.file_id,
+            is_success=True,
+        )
+        await user_repo.increment_downloads(db_user.id)
+    except Exception as exc:
+        logger.warning("Shazam auto MP3 yuborish: %s", exc)
 
 
 class MusicStates(StatesGroup):
@@ -211,20 +319,37 @@ async def _recognize_from_file(
             track_url=result.track_url,
             is_success=True
         )
-        
+
+        musics: list[MusicSearchResult] = list(result.musics or [])
+        if not musics and (result.title or result.artist):
+            fb_q = _normalize_search_query(
+                f"{result.artist or ''} {result.title or ''}".strip()
+            )
+            if len(fb_q) >= 2:
+                stats_repo = CacheStatsRepository(session)
+                ok, found, _ = await api.search_music(fb_q, page=1)
+                await stats_repo.log_api_call("music", 1)
+                if ok and found:
+                    musics = found[:5]
+
         # Format response
         text = f"""🎵 <b>{get_text("download_success", lang)}</b>
 
 🎤 <b>Artist:</b> {result.artist or 'Unknown'}
 🎶 <b>Track:</b> {result.title or 'Unknown'}
 """
-        
-        # Add keyboard with download options
+        if musics and not (result.musics or []):
+            text += "\n🔎 <i>YouTube qidiruv orqali variantlar</i>"
+
         keyboard = None
-        if result.musics:
-            keyboard = get_recognized_music_keyboard(result.musics, result.track_id)
-        
+        if musics or result.track_id:
+            keyboard = get_recognized_music_keyboard(musics, result.track_id)
+
         await status_msg.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
+
+        primary_vid = _first_youtube_id_from_results(musics)
+        if primary_vid:
+            await _try_auto_mp3_after_shazam(bot, message, session, db_user, primary_vid)
         
     except Exception as e:
         logger.error(f"Error recognizing music: {e}")
