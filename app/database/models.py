@@ -97,6 +97,76 @@ class MusicRecognition(Base):
         return f"<MusicRecognition(id={self.id}, title={self.title}, artist={self.artist})>"
 
 
+class UserTaronja(Base):
+    """Taronja bot foydalanuvchilari (alohida jadval, bir xil baza)."""
+
+    __tablename__ = "users_taronabot"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    language_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="uz")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_uzb_time)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_uzb_time, onupdate=get_uzb_time)
+
+    downloads: Mapped[list["DownloadTaronja"]] = relationship(
+        back_populates="user", lazy="selectin"
+    )
+
+    def __repr__(self):
+        return f"<UserTaronja(id={self.id}, user_id={self.user_id}, username={self.username})>"
+
+
+class DownloadTaronja(Base):
+    __tablename__ = "downloads_taronabot"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users_taronabot.id", ondelete="CASCADE")
+    )
+
+    url: Mapped[str] = mapped_column(Text)
+    shortcode: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    platform: Mapped[Platform] = mapped_column(Enum(Platform), default=Platform.OTHER)
+    media_type: Mapped[Optional[MediaType]] = mapped_column(Enum(MediaType), nullable=True)
+
+    caption: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    file_id: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    is_success: Mapped[bool] = mapped_column(Boolean, default=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["UserTaronja"] = relationship(back_populates="downloads")
+
+    def __repr__(self):
+        return f"<DownloadTaronja(id={self.id}, platform={self.platform}, user_id={self.user_id})>"
+
+
+class MusicRecognitionTaronja(Base):
+    __tablename__ = "music_recognitions_taronabot"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users_taronabot.id", ondelete="CASCADE")
+    )
+
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    artist: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    track_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    track_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    is_success: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (
+            f"<MusicRecognitionTaronja(id={self.id}, title={self.title}, artist={self.artist})>"
+        )
+
+
 class CachedMedia(Base):
     """Cached media model for avoiding duplicate API calls"""
     __tablename__ = "cached_media"
@@ -237,3 +307,28 @@ class BroadcastMessage(Base):
     
     def __repr__(self):
         return f"<BroadcastMessage(id={self.id}, status={self.status})>"
+
+
+class BroadcastMessageTaronja(Base):
+    """Taronja bot broadcast tarixi."""
+
+    __tablename__ = "broadcast_messages_taronabot"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    message_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    photo_file_id: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    total_users: Mapped[int] = mapped_column(Integer, default=0)
+    sent_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_uzb_time)
+
+    def __repr__(self):
+        return f"<BroadcastMessageTaronja(id={self.id}, status={self.status})>"

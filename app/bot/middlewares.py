@@ -6,17 +6,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.connection import async_session
 from app.database.repositories import UserRepository
 from app.bot.subscription import check_user_subscription
+from app.bot.db_scope import OXANG_SCOPE, TARONJA_SCOPE, scope_token, reset_scope
 from app.config import settings
 
 
 class DatabaseMiddleware(BaseMiddleware):
-    """Middleware to inject database session into handlers"""
-    
+    """Bitta SQLite/Postgres sessiyasi."""
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: Dict[str, Any],
     ) -> Any:
         async with async_session() as session:
             data["session"] = session
@@ -24,53 +25,58 @@ class DatabaseMiddleware(BaseMiddleware):
 
 
 class UserMiddleware(BaseMiddleware):
-    """Middleware to register/update user on each request"""
-    
+    """Oxang yoki Taronja users jadvali (db_scope)."""
+
+    def __init__(self, taronja: bool = False):
+        self.scope = TARONJA_SCOPE if taronja else OXANG_SCOPE
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: Dict[str, Any],
     ) -> Any:
-        # Get user from event
-        user = None
-        if isinstance(event, Message):
-            user = event.from_user
-        elif isinstance(event, CallbackQuery):
-            user = event.from_user
-        if user and not user.is_bot:
-            session: AsyncSession = data.get("session")
-            if session:
-                user_repo = UserRepository(session)
-                db_user, is_new = await user_repo.get_or_create(
-                    user_id=user.id,
-                    username=user.username,
-                    # Don't override user's saved language preference
-                    language_code=None
-                )
-                
-                data["db_user"] = db_user
-                data["is_new_user"] = is_new
-                data["lang"] = db_user.language_code or "uz"
-        
-        return await handler(event, data)
+        token = scope_token(self.scope)
+        try:
+            user = None
+            if isinstance(event, Message):
+                user = event.from_user
+            elif isinstance(event, CallbackQuery):
+                user = event.from_user
+            if user and not user.is_bot:
+                session: AsyncSession = data.get("session")
+                if session:
+                    user_repo = UserRepository(session)
+                    db_user, is_new = await user_repo.get_or_create(
+                        user_id=user.id,
+                        username=user.username,
+                        language_code=None,
+                    )
+
+                    data["db_user"] = db_user
+                    data["is_new_user"] = is_new
+                    data["lang"] = db_user.language_code or "uz"
+
+            return await handler(event, data)
+        finally:
+            reset_scope(token)
 
 
 class ThrottlingMiddleware(BaseMiddleware):
     """Simple throttling middleware to prevent spam"""
-    
+
     def __init__(self, rate_limit: float = 0.5):
         self.rate_limit = rate_limit
         self.user_last_request: Dict[int, float] = {}
-    
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: Dict[str, Any],
     ) -> Any:
         import time
-        
+
         user = None
         if isinstance(event, Message):
             user = event.from_user
@@ -80,38 +86,34 @@ class ThrottlingMiddleware(BaseMiddleware):
             user_id = user.id
             current_time = time.time()
             last_request = self.user_last_request.get(user_id, 0)
-            
+
             if current_time - last_request < self.rate_limit:
-                # Too fast, skip this request
                 if isinstance(event, CallbackQuery):
                     await event.answer("⏳ Iltimos, biroz kuting...", show_alert=False)
                 return None
-            
+
             self.user_last_request[user_id] = current_time
-        
+
         return await handler(event, data)
 
 
 class SubscriptionMiddleware(BaseMiddleware):
     """Middleware to check required channel subscriptions"""
-    
-    # Commands/callbacks that should bypass subscription check
+
     BYPASS_COMMANDS = {"/start", "/language"}
     BYPASS_CALLBACKS = {"set_lang:", "check_subscription", "admin:", "subscription:"}
-    
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
-        data: Dict[str, Any]
+        data: Dict[str, Any],
     ) -> Any:
-        # Get user from event
         user = None
         should_check = True
-        
+
         if isinstance(event, Message):
             user = event.from_user
-            # Bypass for certain commands
             if event.text:
                 for cmd in self.BYPASS_COMMANDS:
                     if event.text.startswith(cmd):
@@ -119,43 +121,43 @@ class SubscriptionMiddleware(BaseMiddleware):
                         break
         elif isinstance(event, CallbackQuery):
             user = event.from_user
-            # Bypass for certain callbacks
             if event.data:
                 for cb in self.BYPASS_CALLBACKS:
                     if event.data.startswith(cb):
                         should_check = False
                         break
-        
-        # Skip check for admins
+
         if user and user.id in settings.ADMIN_IDS:
             should_check = False
-        
+
         if not should_check or not user:
             return await handler(event, data)
-        
-        # Check subscription
+
         session: AsyncSession = data.get("session")
         bot: Bot = data.get("bot")
-        
+
         if session and bot:
             ok, not_subscribed = await check_user_subscription(bot, user.id, session)
-            
+
             if not ok:
                 from app.bot.keyboards import get_subscription_keyboard
-                
+
                 text = (
                     "📢 <b>Majburiy obuna</b>\n\n"
                     "Botdan foydalanish uchun <b>barcha</b> ko'rsatilgan kanal va guruhlarga "
                     "a'zo bo'ling, so'ng <b>Tekshirish</b> tugmasini bosing.\n"
                 )
-                
+
                 keyboard = get_subscription_keyboard(not_subscribed)
-                
+
                 if isinstance(event, Message):
                     await event.answer(text, reply_markup=keyboard, parse_mode="HTML")
                 elif isinstance(event, CallbackQuery):
-                    await event.answer("❌ Avval barcha kanal/guruhlarga obuna bo'ling!", show_alert=True)
-                
+                    await event.answer(
+                        "❌ Avval barcha kanal/guruhlarga obuna bo'ling!",
+                        show_alert=False,
+                    )
+
                 return None
-        
+
         return await handler(event, data)

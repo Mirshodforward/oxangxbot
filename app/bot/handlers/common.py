@@ -1,5 +1,7 @@
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
+from typing import Union
+
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +18,7 @@ from app.bot.locales import (
     get_text, LANG_UZ, LANG_UZ_CYRL, LANG_RU, LANG_EN,
     LANGUAGES, normalize_language_code
 )
-from app.database.models import User
+from app.database.models import User, UserTaronja
 from app.database.repositories import UserRepository, DownloadRepository, AdminRepository, ChannelRepository
 from app.bot.subscription import check_user_subscription
 
@@ -48,7 +50,13 @@ def _subscription_gate_text() -> str:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, db_user: User, is_new_user: bool, session: AsyncSession, bot: Bot):
+async def cmd_start(
+    message: Message,
+    db_user: Union[User, UserTaronja],
+    is_new_user: bool,
+    session: AsyncSession,
+    bot: Bot,
+):
     """Handle /start command"""
     
     # 1. Update user explicitly on every start
@@ -118,7 +126,12 @@ Quyidagi tugmalardan foydalanib botni boshqaring:
 
 
 @router.callback_query(F.data.startswith("set_lang:"))
-async def callback_set_language(callback: CallbackQuery, session: AsyncSession, db_user: User, bot: Bot):
+async def callback_set_language(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    db_user: Union[User, UserTaronja],
+    bot: Bot,
+):
     """Handle language selection callback"""
     lang_code = callback.data.split(":")[1]
     
@@ -192,14 +205,14 @@ async def cmd_language(message: Message):
 
 
 @router.message(Command("help"))
-async def cmd_help(message: Message, db_user: User):
+async def cmd_help(message: Message, db_user: Union[User, UserTaronja]):
     """Handle /help command"""
     lang = normalize_language_code(db_user.language_code)
     await message.answer(get_text("help", lang), parse_mode="HTML")
 
 
 @router.message(Command("stats"))
-async def cmd_stats(message: Message, session: AsyncSession, db_user: User):
+async def cmd_stats(message: Message, session: AsyncSession, db_user: Union[User, UserTaronja]):
     """Show user statistics"""
     lang = normalize_language_code(db_user.language_code)
     user_repo = UserRepository(session)
@@ -228,7 +241,7 @@ async def cmd_stats(message: Message, session: AsyncSession, db_user: User):
 
 
 @router.message(Command("settings"))
-async def cmd_settings(message: Message, db_user: User):
+async def cmd_settings(message: Message, db_user: Union[User, UserTaronja]):
     """Sozlamalar — /settings"""
     lang = normalize_language_code(db_user.language_code)
     await message.answer(
@@ -239,7 +252,7 @@ async def cmd_settings(message: Message, db_user: User):
 
 
 @router.message(Command("cancel"))
-async def cmd_cancel(message: Message, state: FSMContext, db_user: User):
+async def cmd_cancel(message: Message, state: FSMContext, db_user: Union[User, UserTaronja]):
     """Joriy FSM holatini tozalash — /cancel"""
     await state.clear()
     lang = normalize_language_code(db_user.language_code)

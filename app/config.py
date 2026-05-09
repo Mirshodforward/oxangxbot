@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
+from pydantic import Field, field_validator, AliasChoices
 from typing import Any, Optional
 
 
@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     
     # Database settings
     DATABASE_URL: str
+    # Ikkinchi bot — bir xil DATABASE_URL, users_taronabot jadvali
+    # .env da TARONJA_BOT_TOKEN yoki TARONABOT_TOKEN
+    TARONJA_BOT_TOKEN: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("TARONJA_BOT_TOKEN", "TARONABOT_TOKEN"),
+    )
     
     # Bot info
     BOT_USERNAME: Optional[str] = None

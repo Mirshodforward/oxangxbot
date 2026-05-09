@@ -309,24 +309,8 @@ class FastSaverAPI:
             raw_data=data,
         )
 
-    async def get_media_info(self, url: str) -> MediaInfo:
-        """Instagram reel → `.env` dagi `API_BASE_URL_REELS` + `TOKEN_REELS` (`/get-info`). Boshqasi → v1 `/fetch`."""
-        if _is_instagram_reel_url(url) and self.reels_base_url and self.reels_token:
-            legacy = await self._get_media_info_from_reels_legacy(url)
-            if not legacy.error:
-                return legacy
-            logger.warning(
-                "Reels legacy API xato (%s) — v1 /fetch ga fallback",
-                legacy.error_message,
-            )
-
-        data = await self._get("/fetch", {"url": url})
-        if not _api_ok(data):
-            return MediaInfo(
-                error=True,
-                error_message=data.get("message") or data.get("error") or "Media topilmadi",
-            )
-
+    def _media_info_from_fetch(self, url: str, data: dict[str, Any]) -> MediaInfo:
+        """GET /fetch — hujjat: download_url, thumbnail_url, type, caption, source."""
         raw_list = data.get("medias") or data.get("items") or data.get("slides") or []
         if not isinstance(raw_list, list):
             raw_list = []
@@ -335,7 +319,6 @@ class FastSaverAPI:
         media_type = data.get("type")
         caption = data.get("caption")
 
-        # Bir dona story/slide — ba'zan download_url faqat items[0] ichida
         if not download_url and len(raw_list) == 1:
             only = raw_list[0]
             if isinstance(only, dict):
@@ -358,9 +341,18 @@ class FastSaverAPI:
             if fb.lower() not in _FETCH_ID_PLACEHOLDERS:
                 shortcode = fb
 
+        src = data.get("source")
+        hosting: Optional[str]
+        if isinstance(src, str):
+            hosting = src
+        elif src is not None:
+            hosting = str(src)
+        else:
+            hosting = None
+
         return MediaInfo(
             error=False,
-            hosting=data.get("source"),
+            hosting=hosting,
             shortcode=shortcode,
             caption=caption,
             media_type=media_type,
@@ -369,6 +361,28 @@ class FastSaverAPI:
             items=items,
             raw_data=data,
         )
+
+    async def get_media_info(self, url: str) -> MediaInfo:
+        """
+        Asosiy: GET /fetch (API_BASE_URL + X-Api-Key) — Instagram reel ham shu.
+        /fetch yiqilsa va reel bo‘lsa: ixtiyoriy eski API_BASE_URL_REELS + /get-info.
+        """
+        data = await self._get("/fetch", {"url": url})
+        if _api_ok(data):
+            return self._media_info_from_fetch(url, data)
+
+        err_msg = data.get("message") or data.get("error") or "Media topilmadi"
+
+        if _is_instagram_reel_url(url) and self.reels_base_url and self.reels_token:
+            logger.warning(
+                "GET /fetch muvaffaqiyatsiz (%s) — reels legacy /get-info sinanmoqda",
+                err_msg,
+            )
+            legacy = await self._get_media_info_from_reels_legacy(url)
+            if not legacy.error:
+                return legacy
+
+        return MediaInfo(error=True, error_message=str(err_msg))
 
     async def download_youtube(
         self,

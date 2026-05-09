@@ -292,7 +292,7 @@ async def send_media_to_user(
     media_info: MediaInfo,
     session: AsyncSession,
     db_user: User,
-    original_url: str
+    original_url: str,
 ) -> bool:
     """Send downloaded media to user"""
     platform = detect_platform(original_url)
@@ -602,7 +602,9 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
         
         # Send single media
         await status_msg.delete()
-        success = await send_media_to_user(bot, message, media_info, session, db_user, url)
+        success = await send_media_to_user(
+            bot, message, media_info, session, db_user, url
+        )
         
         if not success:
             if platform == Platform.INSTAGRAM:
@@ -622,7 +624,12 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
 
 
 @router.callback_query(F.data.startswith("yt_dl:"))
-async def youtube_download_callback(callback: CallbackQuery, bot: Bot, session: AsyncSession, db_user: User):
+async def youtube_download_callback(
+    callback: CallbackQuery,
+    bot: Bot,
+    session: AsyncSession,
+    db_user: User,
+):
     """YouTube sifat tanlash — kesh; audio ~7, video ~15 kredit (API bo'yicha)."""
     await callback.answer()
     

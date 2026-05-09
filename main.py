@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sys
+
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
@@ -10,122 +11,120 @@ from aiogram.types import BotCommand
 from app.config import settings
 from app.database.connection import init_db, close_db
 from app.services.fastsaver_api import api
-from app.bot.middlewares import DatabaseMiddleware, UserMiddleware, ThrottlingMiddleware, SubscriptionMiddleware
+from app.bot.middlewares import (
+    DatabaseMiddleware,
+    UserMiddleware,
+    ThrottlingMiddleware,
+    SubscriptionMiddleware,
+)
 from app.bot.handlers import common, download, music, voice, admin
 
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("bot.log", encoding="utf-8")
-    ]
+        logging.FileHandler("bot.log", encoding="utf-8"),
+    ],
 )
 
 logger = logging.getLogger(__name__)
 
 
 async def on_startup(bot: Bot):
-    """Startup tasks"""
     logger.info("Bot starting up...")
-    
-    # Initialize database
-    await init_db()
-    logger.info("Database initialized")
-    
-    # Get bot info
     bot_info = await bot.get_me()
     logger.info(f"Bot: @{bot_info.username} ({bot_info.id})")
-    
-    # Check API health
+
     try:
         stats = await api.get_usage_stats()
         if not stats.error:
             logger.info(f"API Points: {stats.points}")
     except Exception as e:
         logger.warning(f"Could not check API status: {e}")
-        
-    # Set bot commands menu
+
     try:
-        await bot.set_my_commands([
-            BotCommand(command="start", description="Botni ishga tushirish (Start bot)"),
-            BotCommand(command="help", description="Yordam va buyruqlar (Help)"),
-            BotCommand(command="shazam", description="Qo'shiqni aniqlash (Identify song)"),
-            BotCommand(command="search", description="Musiqa qidirish (Search)"),
-            BotCommand(command="top", description="Top musiqalar (Top charts)"),
-            BotCommand(command="lyrics", description="Qo'shiq matni (Lyrics)"),
-            BotCommand(command="stats", description="Statistika (Statistics)"),
-            BotCommand(command="settings", description="Sozlamalar (Settings)"),
-            BotCommand(command="language", description="Tilni o'zgartirish (Change language)"),
-            BotCommand(command="cancel", description="Joriy amalni bekor qilish (Cancel)"),
-        ])
+        await bot.set_my_commands(
+            [
+                BotCommand(command="start", description="Botni ishga tushirish (Start bot)"),
+                BotCommand(command="help", description="Yordam va buyruqlar (Help)"),
+                BotCommand(command="shazam", description="Qo'shiqni aniqlash (Identify song)"),
+                BotCommand(command="search", description="Musiqa qidirish (Search)"),
+                BotCommand(command="top", description="Top musiqalar (Top charts)"),
+                BotCommand(command="lyrics", description="Qo'shiq matni (Lyrics)"),
+                BotCommand(command="stats", description="Statistika (Statistics)"),
+                BotCommand(command="settings", description="Sozlamalar (Settings)"),
+                BotCommand(command="language", description="Tilni o'zgartirish (Change language)"),
+                BotCommand(command="cancel", description="Joriy amalni bekor qilish (Cancel)"),
+            ]
+        )
         logger.info("Bot commands menu updated")
     except Exception as e:
         logger.warning(f"Could not set bot commands: {e}")
 
 
-async def on_shutdown(bot: Bot):
-    """Shutdown tasks"""
-    logger.info("Bot shutting down...")
-    
-    # Close API session
-    await api.close()
-    
-    # Close database connections
-    await close_db()
-    
-    logger.info("Cleanup complete")
-
-
 def setup_routers(dp: Dispatcher):
-    """Register all routers"""
-    # Order matters! More specific routers first
-    dp.include_router(admin.router)  # Admin first (highest priority)
+    dp.include_router(admin.router)
     dp.include_router(common.router)
     dp.include_router(music.router)
-    dp.include_router(voice.router)  # Voice commands after music (lower priority)
+    dp.include_router(voice.router)
     dp.include_router(download.router)
 
 
-def setup_middlewares(dp: Dispatcher):
-    """Register middlewares"""
-    # Order matters! Database first, then user, then subscription
+def setup_middlewares(dp: Dispatcher, *, taronja: bool = False):
     dp.message.middleware(ThrottlingMiddleware(rate_limit=0.3))
     dp.message.middleware(DatabaseMiddleware())
-    dp.message.middleware(UserMiddleware())
+    dp.message.middleware(UserMiddleware(taronja=taronja))
     dp.message.middleware(SubscriptionMiddleware())
-    
+
     dp.callback_query.middleware(ThrottlingMiddleware(rate_limit=0.3))
     dp.callback_query.middleware(DatabaseMiddleware())
-    dp.callback_query.middleware(UserMiddleware())
+    dp.callback_query.middleware(UserMiddleware(taronja=taronja))
     dp.callback_query.middleware(SubscriptionMiddleware())
 
-async def main():
-    """Main function to start the bot"""
-    # Create bot instance
+
+async def run_bot_instance(token: str, *, taronja: bool, label: str):
     bot = Bot(
-        token=settings.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+        token=token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
     )
-    
-    # Create dispatcher with memory storage for FSM
     dp = Dispatcher(storage=MemoryStorage())
-    
-    # Setup middlewares and routers
-    setup_middlewares(dp)
+    setup_middlewares(dp, taronja=taronja)
     setup_routers(dp)
-    
-    # Register startup/shutdown handlers
     dp.startup.register(on_startup)
-    dp.shutdown.register(on_shutdown)
-    
+
+    logger.info("[%s] Polling ishga tushmoqda...", label)
     try:
-        logger.info("Starting polling...")
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     finally:
         await bot.session.close()
+
+
+async def main():
+    await init_db()
+    logger.info("Database initialized")
+
+    tasks = [
+        asyncio.create_task(
+            run_bot_instance(settings.BOT_TOKEN.strip(), taronja=False, label="oxang")
+        )
+    ]
+
+    tar_tok = (settings.TARONJA_BOT_TOKEN or "").strip()
+    if tar_tok:
+        tasks.append(
+            asyncio.create_task(
+                run_bot_instance(tar_tok, taronja=True, label="taronja")
+            )
+        )
+
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        await api.close()
+        await close_db()
+        logger.info("Cleanup complete")
 
 
 if __name__ == "__main__":

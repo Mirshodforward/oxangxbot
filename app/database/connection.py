@@ -7,42 +7,41 @@ from app.config import settings
 
 
 class Base(DeclarativeBase):
-    """Base class for all database models"""
+    """Bitta bazadagi barcha jadvallar."""
+
     pass
 
 
-# Create async engine
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=False,  # Set to True for SQL debugging
-    pool_size=10,
-    max_overflow=20,
-    pool_pre_ping=True,
-    pool_recycle=3600
-)
+def _engine_kwargs():
+    return dict(
+        echo=False,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
 
-# Create async session factory
+
+engine = create_async_engine(settings.DATABASE_URL, **_engine_kwargs())
+
 async_session = async_sessionmaker(
     bind=engine,
     class_=AsyncSession,
     expire_on_commit=False,
     autoflush=False,
-    autocommit=False
+    autocommit=False,
 )
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """Get database session"""
     async with async_session() as session:
         yield session
 
 
 async def init_db():
-    """Initialize database tables"""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # Alembic yo'q: mavjud bazalarga invite_link ustuni
     dialect = engine.dialect.name
     try:
         async with engine.begin() as conn:
@@ -66,5 +65,4 @@ async def init_db():
 
 
 async def close_db():
-    """Close database connections"""
     await engine.dispose()

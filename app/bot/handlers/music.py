@@ -191,7 +191,13 @@ async def _recognize_from_file(
 # ==================== MUSIC SEARCH ====================
 
 @router.message(Command("search", "s"))
-async def cmd_search(message: Message, command: CommandObject, state: FSMContext, session: AsyncSession, db_user: User):
+async def cmd_search(
+    message: Message,
+    command: CommandObject,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+):
     """Musiqa qidiruv — /search yoki /s [so'z]"""
     lang = normalize_language_code(db_user.language_code)
 
@@ -213,7 +219,12 @@ async def cmd_search(message: Message, command: CommandObject, state: FSMContext
 
 
 @router.message(MusicStates.waiting_for_search_query, F.text)
-async def process_search_query(message: Message, state: FSMContext, session: AsyncSession, db_user: User):
+async def process_search_query(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    db_user: User,
+):
     """Process music search query from state (bekor: /cancel — common handler)."""
     raw = (message.text or "").strip()
     if raw.startswith("/"):
@@ -225,7 +236,13 @@ async def process_search_query(message: Message, state: FSMContext, session: Asy
     await _search_music(message, query, session, db_user, page=1)
 
 
-async def _search_music(message: Message, query: str, session: AsyncSession, db_user: User, page: int = 1):
+async def _search_music(
+    message: Message,
+    query: str,
+    session: AsyncSession,
+    db_user: User,
+    page: int = 1,
+):
     """Musiqa qidiruvi — GET /youtube/search (query, page 1–3), kesh."""
     query = _normalize_search_query(query)
     lang = normalize_language_code(db_user.language_code)
@@ -300,7 +317,11 @@ async def _search_music(message: Message, query: str, session: AsyncSession, db_
 
 
 @router.callback_query(F.data.startswith("music_page:"))
-async def music_search_pagination(callback: CallbackQuery, session: AsyncSession, db_user: User):
+async def music_search_pagination(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    db_user: User,
+):
     """Handle music search pagination - WITH CACHING"""
     await callback.answer()
     lang = normalize_language_code(db_user.language_code)

@@ -3,7 +3,7 @@ Admin handlers - Full admin panel for bot management
 """
 import logging
 import asyncio
-from typing import Optional
+from typing import Optional, Union
 
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
@@ -16,12 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.utils.helpers import safe_callback_answer
-from app.database.models import User
+from app.database.models import User, UserTaronja
 from app.database.repositories import (
     AdminRepository,
     ChannelRepository,
     BroadcastRepository,
-    UserRepository,
     CacheStatsRepository,
     YouTubeCacheRepository,
     MusicSearchCacheRepository,
@@ -49,6 +48,11 @@ from app.bot.locales import get_text, normalize_language_code
 
 logger = logging.getLogger(__name__)
 router = Router(name="admin")
+
+
+def _broadcast_storage_key(user_id: int, bot_id: int) -> tuple[int, int]:
+    """Admin bir vaqtning o‘zida ikki botda broadcast boshlamasin."""
+    return (user_id, bot_id)
 
 
 class AdminStates(StatesGroup):
@@ -87,7 +91,7 @@ _CLEAR_INLINE = InlineKeyboardMarkup(inline_keyboard=[])
 # ==================== ADMIN PANEL ====================
 
 @router.message(Command("admin"))
-async def cmd_admin(message: Message, db_user: User):
+async def cmd_admin(message: Message, db_user: Union[User, UserTaronja]):
     """Admin panel command"""
     if not is_admin(message.from_user.id):
         return
@@ -264,7 +268,7 @@ async def broadcast_text_start(callback: CallbackQuery, state: FSMContext):
         return
     
     await state.set_state(AdminStates.waiting_broadcast_text)
-    broadcast_data[callback.from_user.id] = {"type": "text"}
+    broadcast_data[_broadcast_storage_key(callback.from_user.id, callback.bot.id)] = {"type": "text"}
     
     await callback.message.edit_text(
         "📝 <b>Broadcast xabarini yuboring</b>\n\nHTMLni qo'llab-quvvatlaydi.",
@@ -282,7 +286,7 @@ async def broadcast_photo_start(callback: CallbackQuery, state: FSMContext):
         return
     
     await state.set_state(AdminStates.waiting_broadcast_photo)
-    broadcast_data[callback.from_user.id] = {"type": "photo"}
+    broadcast_data[_broadcast_storage_key(callback.from_user.id, callback.bot.id)] = {"type": "photo"}
     
     await callback.message.edit_text(
         "🖼 <b>Media + Caption yuboring</b>\n\n"
@@ -300,8 +304,9 @@ async def receive_broadcast_text(message: Message, state: FSMContext, session: A
     if not is_admin(message.from_user.id):
         return
     
-    broadcast_data[message.from_user.id]["text"] = message.text
-    broadcast_data[message.from_user.id]["html"] = message.html_text
+    bk = _broadcast_storage_key(message.from_user.id, message.bot.id)
+    broadcast_data[bk]["text"] = message.text
+    broadcast_data[bk]["html"] = message.html_text
     
     admin_repo = AdminRepository(session)
     user_count = len(await admin_repo.get_all_user_ids())
@@ -325,9 +330,10 @@ async def receive_broadcast_photo(message: Message, state: FSMContext, session: 
     if not is_admin(message.from_user.id):
         return
     
-    broadcast_data[message.from_user.id]["photo"] = message.photo[-1].file_id
-    broadcast_data[message.from_user.id]["caption"] = message.caption or ""
-    broadcast_data[message.from_user.id]["html_caption"] = get_html_caption(message)
+    bk = _broadcast_storage_key(message.from_user.id, message.bot.id)
+    broadcast_data[bk]["photo"] = message.photo[-1].file_id
+    broadcast_data[bk]["caption"] = message.caption or ""
+    broadcast_data[bk]["html_caption"] = get_html_caption(message)
     
     admin_repo = AdminRepository(session)
     user_count = len(await admin_repo.get_all_user_ids())
@@ -351,10 +357,11 @@ async def receive_broadcast_video(message: Message, state: FSMContext, session: 
     if not is_admin(message.from_user.id):
         return
     
-    broadcast_data[message.from_user.id]["type"] = "video"
-    broadcast_data[message.from_user.id]["video"] = message.video.file_id
-    broadcast_data[message.from_user.id]["caption"] = message.caption or ""
-    broadcast_data[message.from_user.id]["html_caption"] = get_html_caption(message)
+    bk = _broadcast_storage_key(message.from_user.id, message.bot.id)
+    broadcast_data[bk]["type"] = "video"
+    broadcast_data[bk]["video"] = message.video.file_id
+    broadcast_data[bk]["caption"] = message.caption or ""
+    broadcast_data[bk]["html_caption"] = get_html_caption(message)
     
     admin_repo = AdminRepository(session)
     user_count = len(await admin_repo.get_all_user_ids())
@@ -379,11 +386,12 @@ async def broadcast_all(callback: CallbackQuery, session: AsyncSession):
         await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
-    if callback.from_user.id not in broadcast_data:
+    bk = _broadcast_storage_key(callback.from_user.id, callback.bot.id)
+    if bk not in broadcast_data:
         await safe_callback_answer(callback,"Avval xabar turini tanlang!", show_alert=True)
         return
-    
-    broadcast_data[callback.from_user.id]["limit"] = None
+
+    broadcast_data[bk]["limit"] = None
     admin_repo = AdminRepository(session)
     user_count = len(await admin_repo.get_all_user_ids())
     
@@ -421,10 +429,11 @@ async def receive_broadcast_count(message: Message, state: FSMContext, session: 
         await message.answer("❌ Noto'g'ri son. Qaytadan kiriting:")
         return
     
-    if message.from_user.id not in broadcast_data:
-        broadcast_data[message.from_user.id] = {}
-    
-    broadcast_data[message.from_user.id]["limit"] = count
+    bk = _broadcast_storage_key(message.from_user.id, message.bot.id)
+    if bk not in broadcast_data:
+        broadcast_data[bk] = {}
+
+    broadcast_data[bk]["limit"] = count
     
     await state.clear()
     
@@ -445,7 +454,7 @@ async def broadcast_confirm(callback: CallbackQuery, bot: Bot, session: AsyncSes
         await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
     
-    data = broadcast_data.get(callback.from_user.id)
+    data = broadcast_data.get(_broadcast_storage_key(callback.from_user.id, callback.bot.id))
     if not data:
         await safe_callback_answer(callback,"❌ Xabar topilmadi", show_alert=True)
         return
@@ -612,7 +621,7 @@ async def broadcast_confirm(callback: CallbackQuery, bot: Bot, session: AsyncSes
     )
     
     # Cleanup
-    del broadcast_data[callback.from_user.id]
+    del broadcast_data[_broadcast_storage_key(callback.from_user.id, callback.bot.id)]
 
 
 @router.callback_query(F.data == "broadcast:cancel")
@@ -622,8 +631,9 @@ async def broadcast_cancel(callback: CallbackQuery, state: FSMContext):
         return
     
     await state.clear()
-    if callback.from_user.id in broadcast_data:
-        del broadcast_data[callback.from_user.id]
+    bk = _broadcast_storage_key(callback.from_user.id, callback.bot.id)
+    if bk in broadcast_data:
+        del broadcast_data[bk]
     
     await show_admin_panel(callback.message, edit=True)
     await safe_callback_answer(callback,"❌ Bekor qilindi")
@@ -671,14 +681,16 @@ Foydalanuvchi botdan foydalanishi uchun <b>barcha faol</b> kanal va guruhlarga a
 
 
 @router.callback_query(F.data == "admin:channels")
-async def admin_channels(callback: CallbackQuery, state: FSMContext, session: AsyncSession):
+async def admin_channels(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+):
     """Manage required channels"""
     if not is_admin(callback.from_user.id):
         await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
-    
+
     await safe_callback_answer(callback)
-    
+
     channel_repo = ChannelRepository(session)
     channels = await channel_repo.get_all_channels()
     text = _channels_admin_text(channels)
@@ -721,7 +733,9 @@ async def channel_add(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(AdminStates.waiting_channel_username, F.text)
-async def receive_channel_username(message: Message, bot: Bot, state: FSMContext, session: AsyncSession):
+async def receive_channel_username(
+    message: Message, bot: Bot, state: FSMContext, session: AsyncSession
+):
     """Receive channel username and add"""
     if not is_admin(message.from_user.id):
         return
@@ -750,7 +764,7 @@ async def receive_channel_username(message: Message, bot: Bot, state: FSMContext
                 invite_link = getattr(full, "invite_link", None)
             except Exception:
                 invite_link = None
-        
+
         channel_repo = ChannelRepository(session)
         try:
             await channel_repo.add_channel(
@@ -822,9 +836,9 @@ async def channel_delete(callback: CallbackQuery, session: AsyncSession):
     if not is_admin(callback.from_user.id):
         await safe_callback_answer(callback,"❌ Ruxsat yo'q", show_alert=True)
         return
-    
+
     row_id = int(callback.data.split(":")[2])
-    
+
     channel_repo = ChannelRepository(session)
     success = await channel_repo.remove_channel_by_row_id(row_id)
     
@@ -932,9 +946,16 @@ Yuborish usulini tanlang:
 
 
 @router.callback_query(F.data == "check_subscription")
-async def check_subscription_callback(callback: CallbackQuery, bot: Bot, session: AsyncSession, db_user: User):
+async def check_subscription_callback(
+    callback: CallbackQuery,
+    bot: Bot,
+    session: AsyncSession,
+    db_user: Union[User, UserTaronja],
+):
     """Check subscription callback"""
-    is_subscribed, not_subscribed = await check_user_subscription(bot, callback.from_user.id, session)
+    is_subscribed, not_subscribed = await check_user_subscription(
+        bot, callback.from_user.id, session
+    )
     
     if is_subscribed:
         await safe_callback_answer(callback, "✅ Obuna tasdiqlandi!")

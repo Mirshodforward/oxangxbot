@@ -1,97 +1,101 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Any
 import json
 import hashlib
-from sqlalchemy import select, update, func, and_
+from sqlalchemy import select, update, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bot.db_scope import get_scope
 from app.database.models import (
-    User, Download, MusicRecognition, CachedMedia, Platform, MediaType, 
-    get_uzb_time, RequiredChannel, BroadcastMessage, MusicSearchCache, 
-    YouTubeCache, CacheStats
+    CachedMedia,
+    Platform,
+    MediaType,
+    get_uzb_time,
+    RequiredChannel,
+    MusicSearchCache,
+    YouTubeCache,
+    CacheStats,
 )
 
 
 class UserRepository:
     """Repository for User operations"""
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
-    
+        self._User = get_scope().user_model
+
     async def get_or_create(
         self,
         user_id: int,
         username: Optional[str] = None,
-        language_code: Optional[str] = None
-    ) -> tuple[User, bool]:
+        language_code: Optional[str] = None,
+    ) -> tuple[Any, bool]:
         """Get existing user or create new one. Returns (user, is_new)"""
         result = await self.session.execute(
-            select(User).where(User.user_id == user_id)
+            select(self._User).where(self._User.user_id == user_id)
         )
         user = result.scalar_one_or_none()
-        
+
         if user:
-            # Update user info
             user.username = username
             user.updated_at = get_uzb_time()
             if language_code:
                 user.language_code = language_code
             await self.session.commit()
             return user, False
-        
-        # Create new user
-        user = User(
+
+        user = self._User(
             user_id=user_id,
             username=username,
-            language_code=language_code or "uz"
+            language_code=language_code or "uz",
         )
         self.session.add(user)
         await self.session.commit()
         await self.session.refresh(user)
         return user, True
-    
-    async def get_by_id(self, user_id: int) -> Optional[User]:
+
+    async def get_by_id(self, user_id: int) -> Optional[Any]:
         """Get user by ID"""
         result = await self.session.execute(
-            select(User).where(User.id == user_id)
+            select(self._User).where(self._User.id == user_id)
         )
         return result.scalar_one_or_none()
-    
+
     async def increment_downloads(self, user_id: int) -> None:
         """Increment user's download count obsolete"""
         pass
-    
+
     async def get_total_users(self) -> int:
         """Get total number of users"""
-        result = await self.session.execute(
-            select(func.count(User.id))
-        )
+        result = await self.session.execute(select(func.count(self._User.id)))
         return result.scalar() or 0
-    
+
     async def get_active_users(self, days: int = 7) -> int:
         """Get number of active users in last N days"""
         since = get_uzb_time() - timedelta(days=days)
         result = await self.session.execute(
-            select(func.count(User.id)).where(User.updated_at >= since)
+            select(func.count(self._User.id)).where(self._User.updated_at >= since)
         )
         return result.scalar() or 0
 
-    
     async def update_language(self, user_id: int, language_code: str) -> None:
         """Update user's preferred language"""
         await self.session.execute(
-            update(User)
-            .where(User.id == user_id)
+            update(self._User)
+            .where(self._User.id == user_id)
             .values(language_code=language_code, updated_at=get_uzb_time())
         )
         await self.session.commit()
 
+
 class DownloadRepository:
     """Repository for Download operations"""
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
-    
+        self._Download = get_scope().download_model
+
     async def create(
         self,
         user_id: int,
@@ -102,47 +106,46 @@ class DownloadRepository:
         caption: Optional[str] = None,
         file_id: Optional[str] = None,
         is_success: bool = True,
-        error_message: Optional[str] = None
-    ) -> Download:
+        error_message: Optional[str] = None,
+    ) -> Any:
         """Create download record"""
-        download = Download(
+        download = self._Download(
             user_id=user_id,
             url=url,
             shortcode=shortcode,
             platform=platform,
             media_type=media_type,
-            caption=caption[:500] if caption else None,  # Truncate caption
+            caption=caption[:500] if caption else None,
             file_id=file_id,
             is_success=is_success,
-            error_message=error_message
+            error_message=error_message,
         )
         self.session.add(download)
         await self.session.commit()
         await self.session.refresh(download)
         return download
-    
-    async def get_user_downloads(self, user_id: int, limit: int = 10) -> list[Download]:
+
+    async def get_user_downloads(self, user_id: int, limit: int = 10) -> list[Any]:
         """Get user's recent downloads"""
         result = await self.session.execute(
-            select(Download)
-            .where(Download.user_id == user_id)
-            .order_by(Download.created_at.desc())
+            select(self._Download)
+            .where(self._Download.user_id == user_id)
+            .order_by(self._Download.created_at.desc())
             .limit(limit)
         )
         return list(result.scalars().all())
-    
+
     async def get_total_downloads(self) -> int:
         """Get total downloads count"""
-        result = await self.session.execute(
-            select(func.count(Download.id))
-        )
+        result = await self.session.execute(select(func.count(self._Download.id)))
         return result.scalar() or 0
-    
+
     async def get_downloads_by_platform(self) -> dict[str, int]:
         """Get downloads grouped by platform"""
         result = await self.session.execute(
-            select(Download.platform, func.count(Download.id))
-            .group_by(Download.platform)
+            select(self._Download.platform, func.count(self._Download.id)).group_by(
+                self._Download.platform
+            )
         )
         return {row[0].value: row[1] for row in result.all()}
 
@@ -494,10 +497,11 @@ class CacheStatsRepository:
 
 class MusicRepository:
     """Repository for music recognition operations"""
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
-    
+        self._Music = get_scope().music_model
+
     async def create(
         self,
         user_id: int,
@@ -505,16 +509,16 @@ class MusicRepository:
         artist: Optional[str] = None,
         track_id: Optional[str] = None,
         track_url: Optional[str] = None,
-        is_success: bool = True
-    ) -> MusicRecognition:
+        is_success: bool = True,
+    ) -> Any:
         """Create music recognition record"""
-        record = MusicRecognition(
+        record = self._Music(
             user_id=user_id,
             title=title,
             artist=artist,
             track_id=track_id,
             track_url=track_url,
-            is_success=is_success
+            is_success=is_success,
         )
         self.session.add(record)
         await self.session.commit()
@@ -613,35 +617,36 @@ class ChannelRepository:
 
 class BroadcastRepository:
     """Repository for broadcast operations"""
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
-    
+        self._Broadcast = get_scope().broadcast_model
+
     async def create_broadcast(
         self,
         admin_id: int,
         message_text: Optional[str] = None,
         photo_file_id: Optional[str] = None,
-        total_users: int = 0
-    ) -> BroadcastMessage:
+        total_users: int = 0,
+    ) -> Any:
         """Create new broadcast record"""
-        broadcast = BroadcastMessage(
+        broadcast = self._Broadcast(
             admin_id=admin_id,
             message_text=message_text,
             photo_file_id=photo_file_id,
-            total_users=total_users
+            total_users=total_users,
         )
         self.session.add(broadcast)
         await self.session.commit()
         await self.session.refresh(broadcast)
         return broadcast
-    
+
     async def update_broadcast(
         self,
         broadcast_id: int,
         sent_count: int = None,
         failed_count: int = None,
-        status: str = None
+        status: str = None,
     ) -> None:
         """Update broadcast progress"""
         values = {}
@@ -655,19 +660,19 @@ class BroadcastRepository:
                 values["started_at"] = get_uzb_time()
             elif status == "completed":
                 values["completed_at"] = get_uzb_time()
-        
+
         await self.session.execute(
-            update(BroadcastMessage)
-            .where(BroadcastMessage.id == broadcast_id)
+            update(self._Broadcast)
+            .where(self._Broadcast.id == broadcast_id)
             .values(**values)
         )
         await self.session.commit()
-    
-    async def get_last_broadcasts(self, limit: int = 10) -> list[BroadcastMessage]:
+
+    async def get_last_broadcasts(self, limit: int = 10) -> list[Any]:
         """Get last N broadcasts"""
         result = await self.session.execute(
-            select(BroadcastMessage)
-            .order_by(BroadcastMessage.created_at.desc())
+            select(self._Broadcast)
+            .order_by(self._Broadcast.created_at.desc())
             .limit(limit)
         )
         return list(result.scalars().all())
@@ -675,76 +680,81 @@ class BroadcastRepository:
 
 class AdminRepository:
     """Repository for admin analytics"""
-    
+
     def __init__(self, session: AsyncSession):
         self.session = session
-    
+        sc = get_scope()
+        self._User = sc.user_model
+        self._Download = sc.download_model
+        self._Music = sc.music_model
+
     async def get_all_user_ids(self, limit: Optional[int] = None) -> list[int]:
         """Get all user telegram IDs for broadcast"""
-        query = select(User.user_id)
+        query = select(self._User.user_id)
         if limit:
             query = query.limit(limit)
         result = await self.session.execute(query)
         return [row[0] for row in result.all()]
-    
+
     async def get_stats(self) -> dict:
         """Get comprehensive bot statistics"""
-        # Total users
-        total_users = await self.session.execute(select(func.count(User.id)))
+        total_users = await self.session.execute(select(func.count(self._User.id)))
         total_users = total_users.scalar() or 0
-        
-        # Active users (last 24h, 7d, 30d)
+
         now = get_uzb_time()
-        
+
         active_24h = await self.session.execute(
-            select(func.count(User.id)).where(User.updated_at >= now - timedelta(hours=24))
+            select(func.count(self._User.id)).where(
+                self._User.updated_at >= now - timedelta(hours=24)
+            )
         )
         active_24h = active_24h.scalar() or 0
-        
+
         active_7d = await self.session.execute(
-            select(func.count(User.id)).where(User.updated_at >= now - timedelta(days=7))
+            select(func.count(self._User.id)).where(
+                self._User.updated_at >= now - timedelta(days=7)
+            )
         )
         active_7d = active_7d.scalar() or 0
-        
+
         active_30d = await self.session.execute(
-            select(func.count(User.id)).where(User.updated_at >= now - timedelta(days=30))
+            select(func.count(self._User.id)).where(
+                self._User.updated_at >= now - timedelta(days=30)
+            )
         )
         active_30d = active_30d.scalar() or 0
-        
-        # New users today, this week
+
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = today_start - timedelta(days=today_start.weekday())
-        
+
         new_today = await self.session.execute(
-            select(func.count(User.id)).where(User.created_at >= today_start)
+            select(func.count(self._User.id)).where(self._User.created_at >= today_start)
         )
         new_today = new_today.scalar() or 0
-        
+
         new_this_week = await self.session.execute(
-            select(func.count(User.id)).where(User.created_at >= week_start)
+            select(func.count(self._User.id)).where(self._User.created_at >= week_start)
         )
         new_this_week = new_this_week.scalar() or 0
-        
-        # Total downloads
-        total_downloads = await self.session.execute(select(func.count(Download.id)))
+
+        total_downloads = await self.session.execute(select(func.count(self._Download.id)))
         total_downloads = total_downloads.scalar() or 0
-        
-        # Downloads today
+
         downloads_today = await self.session.execute(
-            select(func.count(Download.id)).where(Download.created_at >= today_start)
+            select(func.count(self._Download.id)).where(
+                self._Download.created_at >= today_start
+            )
         )
         downloads_today = downloads_today.scalar() or 0
-        
-        # Music recognitions
-        total_shazams = await self.session.execute(select(func.count(MusicRecognition.id)))
+
+        total_shazams = await self.session.execute(select(func.count(self._Music.id)))
         total_shazams = total_shazams.scalar() or 0
-        
-        # Total users with username
+
         users_with_username = await self.session.execute(
-            select(func.count(User.id)).where(User.username.is_not(None))
+            select(func.count(self._User.id)).where(self._User.username.is_not(None))
         )
         users_with_username = users_with_username.scalar() or 0
-        
+
         return {
             "total_users": total_users,
             "users_with_username": users_with_username,
@@ -755,5 +765,5 @@ class AdminRepository:
             "new_this_week": new_this_week,
             "total_downloads": total_downloads,
             "downloads_today": downloads_today,
-            "total_shazams": total_shazams
+            "total_shazams": total_shazams,
         }
