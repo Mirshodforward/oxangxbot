@@ -221,6 +221,15 @@ class CacheRepository:
             .values(**{field.key: file_id})
         )
         await self.session.commit()
+
+    async def invalidate_cached_file_id(self, url_hash: str) -> None:
+        """Telegram file_id eskirganda — qayta CDN yuklash uchun keshdan olib tashlash."""
+        await self.session.execute(
+            update(CachedMedia)
+            .where(CachedMedia.url_hash == url_hash)
+            .values(file_id=None)
+        )
+        await self.session.commit()
     
     async def increment_hit(self, url_hash: str) -> None:
         """Increment cache hit counter"""

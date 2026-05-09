@@ -393,7 +393,11 @@ async def send_media_to_user(
             return True
         except Exception as e:
             logger.warning(f"Cached file_id failed: {e}")
-    
+            try:
+                await cache_repo.invalidate_cached_file_id(url_hash)
+            except Exception as inv_err:
+                logger.warning("Kesh file_id tozalanmadi: %s", inv_err)
+
     # Download and send new media
     try:
         download_url = media_info.download_url

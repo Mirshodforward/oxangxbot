@@ -2,6 +2,8 @@ import logging
 import os
 import re
 import tempfile
+from typing import Optional
+
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command, CommandObject
@@ -24,6 +26,47 @@ from app.utils.helpers import truncate_text
 
 logger = logging.getLogger(__name__)
 router = Router(name="music")
+
+
+def _shazam_upload_suffix(message: Message, telegram_file_path: Optional[str]) -> str:
+    """
+    Telegram getFile path ba'zan kengaytmasiz (.dat) — Shazam esa mp4/m4a kabi tur kutadi.
+    mime_type bo'yicha to'g'ri kengaytma tanlanadi.
+    """
+    path_ext = (os.path.splitext(telegram_file_path or "")[1] or "").lower()
+    if path_ext and path_ext != ".dat":
+        return path_ext
+
+    mime = ""
+    if message.video and message.video.mime_type:
+        mime = message.video.mime_type.lower()
+    elif message.document and message.document.mime_type:
+        mime = message.document.mime_type.lower()
+    elif message.video_note and getattr(message.video_note, "mime_type", None):
+        mime = str(message.video_note.mime_type).lower()
+    elif message.audio and message.audio.mime_type:
+        mime = message.audio.mime_type.lower()
+
+    mime_map = {
+        "video/mp4": ".mp4",
+        "video/webm": ".webm",
+        "video/quicktime": ".mov",
+        "audio/mpeg": ".mp3",
+        "audio/mp4": ".m4a",
+        "audio/ogg": ".ogg",
+        "audio/opus": ".ogg",
+    }
+    if mime in mime_map:
+        return mime_map[mime]
+    if mime.startswith("video/"):
+        return ".mp4"
+    if mime.startswith("audio/"):
+        return ".mp3"
+    if message.video or message.video_note:
+        return ".mp4"
+    if message.audio or message.voice:
+        return ".ogg"
+    return ".mp4"
 
 
 class MusicStates(StatesGroup):
@@ -142,7 +185,7 @@ async def _recognize_from_file(
     
     try:
         tg_file = await bot.get_file(file_id)
-        suffix = os.path.splitext(tg_file.file_path or "")[1] or ".dat"
+        suffix = _shazam_upload_suffix(message, tg_file.file_path)
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp_path = tmp.name
         try:
