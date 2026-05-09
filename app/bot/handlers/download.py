@@ -4,7 +4,7 @@ import os
 import re
 import shutil
 import tempfile
-from typing import Optional
+from typing import Optional, List
 
 import aiohttp
 from aiogram import Router, F, Bot
@@ -36,6 +36,46 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = Router(name="download")
+
+
+def _youtube_callback_is_text_ui(msg: Message) -> bool:
+    """Matnli xabar (qidiruv sifat tanlash) — edit_text mumkin. Video ostidagi tugma — yo'q."""
+    return msg.text is not None
+
+
+async def _youtube_progress(
+    anchor: Message,
+    holder: List[Optional[Message]],
+    text: str,
+) -> None:
+    if _youtube_callback_is_text_ui(anchor):
+        await anchor.edit_text(text)
+        return
+    if holder[0] is None:
+        holder[0] = await anchor.answer(text)
+    else:
+        await holder[0].edit_text(text)
+
+
+async def _youtube_cleanup_progress(holder: List[Optional[Message]]) -> None:
+    m = holder[0]
+    if m is not None:
+        try:
+            await m.delete()
+        except Exception:
+            pass
+        holder[0] = None
+
+
+async def _youtube_show_error(anchor: Message, text: str) -> None:
+    if _youtube_callback_is_text_ui(anchor):
+        try:
+            await anchor.edit_text(text)
+        except Exception:
+            await anchor.answer(text)
+    else:
+        await anchor.answer(text)
+
 
 # Telegram URLInputFile ba'zi CDN (masalan Instagram) uchun 403 beradi — serverda yuklab yuboramiz
 _MAX_REMOTE_MEDIA_BYTES = 80 * 1024 * 1024
@@ -307,7 +347,8 @@ async def send_media_to_user(
         bot_username = "Oxangxbot"
     
     caption_text = get_text("downloaded_via", lang, bot_username=bot_username)
-    keyboard = get_download_keyboard(lang)
+    yt_vid = extract_youtube_video_id(original_url)
+    keyboard = get_download_keyboard(lang, youtube_video_id=yt_vid)
     
     url_hash = get_url_hash(original_url)
     
@@ -632,45 +673,43 @@ async def youtube_download_callback(
 ):
     """YouTube sifat tanlash — kesh; audio ~7, video ~15 kredit (API bo'yicha)."""
     await callback.answer()
-    
-    # Parse callback data: yt_dl:video_id:format
+    msg = callback.message
+    progress_holder: List[Optional[Message]] = [None]
+
     parts = callback.data.split(":")
     if len(parts) != 3:
-        await callback.message.edit_text("❌ Noto'g'ri so'rov")
+        await _youtube_show_error(msg, "❌ Noto'g'ri so'rov")
         return
-    
+
     _, video_id, format_quality = parts
     api_credit_cost = 7 if format_quality.lower() == "mp3" else 15
-    
-    # Initialize repositories
+
     yt_cache_repo = YouTubeCacheRepository(session)
     stats_repo = CacheStatsRepository(session)
     download_repo = DownloadRepository(session)
     user_repo = UserRepository(session)
-    
-    # 🚀 CHECK CACHE FIRST
+
     cached = await yt_cache_repo.get_cached(video_id, format_quality)
-    
+
     if cached:
-        # CACHE HIT! Send from cache
         try:
             if cached.media_type == "video":
-                await callback.message.answer_video(
+                await msg.answer_video(
                     video=cached.file_id,
                     caption=f"▶️ <b>YouTube</b> | {format_quality}\n⚡ <i>Keshdan yuklandi</i>",
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
             else:
-                await callback.message.answer_audio(
+                await msg.answer_audio(
                     audio=cached.file_id,
                     caption=f"🎵 <b>YouTube</b> | MP3\n⚡ <i>Keshdan yuklandi</i>",
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
-            
-            await callback.message.delete()
-            
+            if _youtube_callback_is_text_ui(msg):
+                await msg.delete()
+
             await stats_repo.log_cache_hit("youtube", api_credit_cost)
-            
+
             await download_repo.create(
                 user_id=db_user.id,
                 url=f"https://youtube.com/watch?v={video_id}",
@@ -678,10 +717,10 @@ async def youtube_download_callback(
                 shortcode=video_id,
                 media_type=MediaType.VIDEO if cached.media_type == "video" else MediaType.AUDIO,
                 file_id=cached.file_id,
-                is_success=True
+                is_success=True,
             )
             await user_repo.increment_downloads(db_user.id)
-            
+
             logger.info(
                 "YouTube cache hit: video_id=%s format=%s (~%s kredit tejaldi)",
                 video_id,
@@ -689,33 +728,34 @@ async def youtube_download_callback(
                 api_credit_cost,
             )
             return
-            
+
         except Exception as e:
             logger.warning(f"Cached file_id expired or invalid: {e}")
-            # Continue to API call if cache failed
-    
-    # CACHE MISS — API chaqiruvi
-    await callback.message.edit_text(f"⏳ YouTube {format_quality} formatda yuklanmoqda...")
-    
+
+    await _youtube_progress(
+        msg, progress_holder, f"⏳ YouTube {format_quality} formatda yuklanmoqda..."
+    )
+
     try:
-        # Get bot username
         bot_info = await bot.get_me()
         bot_username = f"@{bot_info.username}"
-        
+
         result = await api.download_youtube(
             video_id=video_id,
             format=format_quality,
-            bot_username=bot_username
+            bot_username=bot_username,
         )
-        
+
         await stats_repo.log_api_call("youtube", api_credit_cost)
-        
+
         if result.error:
-            await callback.message.edit_text(
-                f"❌ Xatolik: {result.error_message or 'Yuklab bolmadi'}"
+            await _youtube_progress(
+                msg,
+                progress_holder,
+                f"❌ Xatolik: {result.error_message or 'Yuklab bolmadi'}",
             )
             return
-        
+
         caption_v = f"▶️ <b>YouTube</b> | {format_quality}"
         caption_a = "🎵 <b>YouTube</b> | MP3"
         sent_file_id: Optional[str] = None
@@ -724,32 +764,34 @@ async def youtube_download_callback(
         if result.file_id:
             try:
                 if result.media_type == "video":
-                    sent = await callback.message.answer_video(
+                    sent = await msg.answer_video(
                         video=result.file_id,
                         caption=caption_v,
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                     sent_file_id = sent.video.file_id if sent.video else None
                 else:
-                    sent = await callback.message.answer_audio(
+                    sent = await msg.answer_audio(
                         audio=result.file_id,
                         caption=caption_a,
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                     sent_file_id = sent.audio.file_id if sent.audio else None
-                
-                await callback.message.delete()
-                
+
+                await _youtube_cleanup_progress(progress_holder)
+                if _youtube_callback_is_text_ui(msg):
+                    await msg.delete()
+
                 if sent_file_id:
                     await yt_cache_repo.cache_download(
                         video_id=video_id,
                         format=format_quality,
                         file_id=sent_file_id,
                         media_type=sent_media,
-                        expires_hours=240
+                        expires_hours=240,
                     )
                     logger.info(f"YouTube cached: video_id={video_id}, format={format_quality}")
-                
+
                 await download_repo.create(
                     user_id=db_user.id,
                     url=f"https://youtube.com/watch?v={video_id}",
@@ -757,14 +799,16 @@ async def youtube_download_callback(
                     shortcode=video_id,
                     media_type=MediaType.VIDEO if sent_media == "video" else MediaType.AUDIO,
                     file_id=sent_file_id or result.file_id,
-                    is_success=True
+                    is_success=True,
                 )
                 await user_repo.increment_downloads(db_user.id)
-                
+
             except Exception as e:
                 logger.error(f"Error sending YouTube file: {e}")
-                await callback.message.edit_text(
-                    "❌ Faylni yuborib bo'lmadi. File_id muddati tugagan bo'lishi mumkin."
+                await _youtube_progress(
+                    msg,
+                    progress_holder,
+                    "❌ Faylni yuborib bo'lmadi. File_id muddati tugagan bo'lishi mumkin.",
                 )
         elif result.download_url:
             fn = (result.filename or f"yt_{video_id}_{format_quality}.mp4").replace("\x00", "")
@@ -772,7 +816,7 @@ async def youtube_download_callback(
                 fn = f"{video_id}.mp4"
             try:
                 upload = URLInputFile(result.download_url, filename=fn)
-                sent = await callback.message.answer_video(
+                sent = await msg.answer_video(
                     video=upload,
                     caption=caption_v,
                     parse_mode="HTML",
@@ -785,19 +829,21 @@ async def youtube_download_callback(
                 )
                 raw = await _fetch_url_bytes_for_upload(result.download_url)
                 if not raw:
-                    await callback.message.edit_text(
-                        "❌ Video havolasidan yuklab bo'lmadi."
+                    await _youtube_progress(
+                        msg, progress_holder, "❌ Video havolasidan yuklab bo'lmadi."
                     )
                     return
                 upload = BufferedInputFile(raw, filename=fn or "video.mp4")
-                sent = await callback.message.answer_video(
+                sent = await msg.answer_video(
                     video=upload,
                     caption=caption_v,
                     parse_mode="HTML",
                 )
                 sent_file_id = sent.video.file_id if sent.video else None
 
-            await callback.message.delete()
+            await _youtube_cleanup_progress(progress_holder)
+            if _youtube_callback_is_text_ui(msg):
+                await msg.delete()
 
             if sent_file_id:
                 await yt_cache_repo.cache_download(
@@ -818,8 +864,10 @@ async def youtube_download_callback(
             )
             await user_repo.increment_downloads(db_user.id)
         else:
-            await callback.message.edit_text("❌ File ID yoki yuklash havolasi topilmadi")
-            
+            await _youtube_progress(
+                msg, progress_holder, "❌ File ID yoki yuklash havolasi topilmadi"
+            )
+
     except Exception as e:
         logger.error(f"YouTube download error: {e}")
-        await callback.message.edit_text("❌ Xatolik yuz berdi")
+        await _youtube_progress(msg, progress_holder, "❌ Xatolik yuz berdi")

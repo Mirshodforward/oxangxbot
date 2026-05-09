@@ -486,13 +486,37 @@ class FastSaverAPI:
         except OSError as e:
             return MusicRecognitionResult(error=True, error_message=str(e))
 
+        # FastSaver: /shazam/identify — max 50MB
+        _max_identify = 50 * 1024 * 1024
+        if len(raw) > _max_identify:
+            return MusicRecognitionResult(
+                error=True,
+                error_message="Fayl 50 MB dan katta (Shazam API chegarasi)",
+            )
+
+        ext = (os.path.splitext(file_path)[1] or ".ogg").lower()
+        ct_by_ext: dict[str, str] = {
+            ".mp4": "video/mp4",
+            ".m4v": "video/x-m4v",
+            ".webm": "video/webm",
+            ".mov": "video/quicktime",
+            ".mkv": "video/x-matroska",
+            ".mp3": "audio/mpeg",
+            ".m4a": "audio/mp4",
+            ".aac": "audio/aac",
+            ".ogg": "audio/ogg",
+            ".opus": "audio/opus",
+            ".wav": "audio/wav",
+            ".flac": "audio/flac",
+        }
+        content_type = ct_by_ext.get(ext, "application/octet-stream")
+
         form = aiohttp.FormData()
-        ext = os.path.splitext(file_path)[1] or ".ogg"
         form.add_field(
             "file",
             raw,
             filename=f"upload{ext}",
-            content_type="application/octet-stream",
+            content_type=content_type,
         )
 
         try:
@@ -500,6 +524,14 @@ class FastSaverAPI:
                 data = await self._read_json_response(response)
                 if response.status != 200 or not _api_ok(data):
                     msg = data.get("message") or "Tanilmadi"
+                    logger.warning(
+                        "shazam/identify: status=%s ok=%s msg=%s bytes=%s ext=%s",
+                        response.status,
+                        data.get("ok"),
+                        msg,
+                        len(raw),
+                        ext,
+                    )
                     return MusicRecognitionResult(error=True, error_message=msg)
 
                 musics: list[MusicSearchResult] = []

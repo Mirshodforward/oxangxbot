@@ -245,15 +245,19 @@ def get_back_keyboard(callback_data: str = "back") -> InlineKeyboardMarkup:
     ])
 
 
-def get_download_keyboard(lang: str) -> InlineKeyboardMarkup:
-    """Download keyboard with download song and share buttons"""
+def get_download_keyboard(
+    lang: str, youtube_video_id: Optional[str] = None
+) -> InlineKeyboardMarkup:
+    """Download keyboard: YouTube — to'g'ridan-to'g'ri MP3 (tg-bot file_id); boshqa — Shazam."""
     builder = InlineKeyboardBuilder()
-    
-    # "Qo'shiqni yuklab olish"
-    builder.row(InlineKeyboardButton(
-        text=get_text("btn_download_audio", lang),
-        callback_data="shazam_this"
-    ))
+    vid = (youtube_video_id or "").strip()
+    audio_cb = f"yt_dl:{vid}:mp3" if vid else "shazam_this"
+    builder.row(
+        InlineKeyboardButton(
+            text=get_text("btn_download_audio", lang),
+            callback_data=audio_cb,
+        )
+    )
     
     # "Do'stlarga tarqatish"
     builder.row(InlineKeyboardButton(
