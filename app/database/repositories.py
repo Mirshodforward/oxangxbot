@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Any
 import json
 import hashlib
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.bot.db_scope import get_scope
@@ -12,6 +12,7 @@ from app.database.models import (
     MediaType,
     get_uzb_time,
     RequiredChannel,
+    DiscoveredAdminChat,
     MusicSearchCache,
     YouTubeCache,
     CacheStats,
@@ -636,6 +637,65 @@ class ChannelRepository:
             await self.session.commit()
             return channel
         return None
+
+
+class DiscoveredChatRepository:
+    """Bot admin bo'lgan kanallar (maxfiy tanlash uchun)."""
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def upsert_from_chat(
+        self,
+        *,
+        chat_id: int,
+        chat_title: str,
+        chat_type: str,
+        invite_link: Optional[str],
+    ) -> DiscoveredAdminChat:
+        result = await self.session.execute(
+            select(DiscoveredAdminChat).where(DiscoveredAdminChat.chat_id == chat_id)
+        )
+        row = result.scalar_one_or_none()
+        if row:
+            row.chat_title = chat_title
+            row.chat_type = chat_type
+            if invite_link:
+                row.invite_link = invite_link
+            await self.session.commit()
+            await self.session.refresh(row)
+            return row
+        row = DiscoveredAdminChat(
+            chat_id=chat_id,
+            chat_title=chat_title,
+            chat_type=chat_type,
+            invite_link=invite_link,
+        )
+        self.session.add(row)
+        await self.session.commit()
+        await self.session.refresh(row)
+        return row
+
+    async def delete_by_chat_id(self, chat_id: int) -> None:
+        await self.session.execute(
+            delete(DiscoveredAdminChat).where(DiscoveredAdminChat.chat_id == chat_id)
+        )
+        await self.session.commit()
+
+    async def get_by_row_id(self, row_id: int) -> Optional[DiscoveredAdminChat]:
+        result = await self.session.execute(
+            select(DiscoveredAdminChat).where(DiscoveredAdminChat.id == row_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def list_not_in_required(self) -> list[DiscoveredAdminChat]:
+        sub = select(RequiredChannel.channel_id)
+        result = await self.session.execute(
+            select(DiscoveredAdminChat)
+            .where(~DiscoveredAdminChat.chat_id.in_(sub))
+            .order_by(DiscoveredAdminChat.chat_title)
+        )
+        return list(result.scalars().all())
 
 
 class BroadcastRepository:

@@ -269,6 +269,27 @@ class CacheStats(Base):
         return f"<CacheStats(date={self.date}, saved={self.points_saved})>"
 
 
+class DiscoveredAdminChat(Base):
+    """
+    Bot kanal/superguruhda admin bo'lganda (my_chat_member) yoziladi.
+    Admin maxfiy kanalni ro'yxatdan tanlash uchun.
+    """
+
+    __tablename__ = "discovered_admin_chats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    chat_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    invite_link: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    chat_type: Mapped[str] = mapped_column(String(32), nullable=False)  # channel | supergroup
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=get_uzb_time, onupdate=get_uzb_time
+    )
+
+    def __repr__(self):
+        return f"<DiscoveredAdminChat(id={self.id}, chat_id={self.chat_id}, title={self.chat_title!r})>"
+
+
 class RequiredChannel(Base):
     """Required subscription channels"""
     __tablename__ = "required_channels"

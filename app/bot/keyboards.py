@@ -410,13 +410,38 @@ def get_channels_keyboard(channels: list) -> InlineKeyboardMarkup:
         )
     
     at_limit = len(channels) >= 5
-    add_text = "➕ Kanal qo'shish" if not at_limit else "➕ Limit (5/5)"
-    add_cb = "channel:add" if not at_limit else "channel:add_limit"
-    builder.row(InlineKeyboardButton(text=add_text, callback_data=add_cb))
+    add_text = "➕ Limit (5/5)" if at_limit else None
+    if at_limit:
+        builder.row(
+            InlineKeyboardButton(text=add_text, callback_data="channel:add_limit")
+        )
+    else:
+        builder.row(
+            InlineKeyboardButton(text="➕ @username", callback_data="channel:add"),
+            InlineKeyboardButton(text="🔐 Maxfiy", callback_data="channel:add_private"),
+        )
     builder.row(
         InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin:back")
     )
-    
+
+    return builder.as_markup()
+
+
+def get_discovered_private_pick_keyboard(rows: list) -> InlineKeyboardMarkup:
+    """Maxfiy kanallar ro'yxati (bot admin bo'lgan)."""
+    builder = InlineKeyboardBuilder()
+    for row in rows:
+        raw = (row.chat_title or "Kanal").strip() or "Kanal"
+        short = raw if len(raw) <= 42 else raw[:39] + "…"
+        builder.row(
+            InlineKeyboardButton(
+                text=f"🔐 {short}",
+                callback_data=f"chpk:{row.id}",
+            )
+        )
+    builder.row(
+        InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin:channels")
+    )
     return builder.as_markup()
 
 

@@ -6,8 +6,8 @@ import asyncio
 from typing import Optional, Union
 
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup
-from aiogram.enums import ChatMemberStatus, ParseMode
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, ChatMemberUpdated
+from aiogram.enums import ChatMemberStatus, ParseMode, ChatType
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -20,6 +20,7 @@ from app.database.models import User, UserTaronja
 from app.database.repositories import (
     AdminRepository,
     ChannelRepository,
+    DiscoveredChatRepository,
     BroadcastRepository,
     CacheStatsRepository,
     YouTubeCacheRepository,
@@ -37,6 +38,7 @@ from app.bot.keyboards import (
     get_admin_main_keyboard,
     get_broadcast_keyboard,
     get_channels_keyboard,
+    get_discovered_private_pick_keyboard,
     get_subscription_keyboard,
     get_broadcast_confirm_keyboard,
     get_admin_back_keyboard,
@@ -667,11 +669,57 @@ async def broadcast_history(callback: CallbackQuery, session: AsyncSession):
 
 # ==================== REQUIRED CHANNELS ====================
 
+
+@router.my_chat_member()
+async def bot_my_chat_member(
+    event: ChatMemberUpdated,
+    bot: Bot,
+    session: AsyncSession,
+):
+    """Bot kanal/superguruhda admin bo'lsa — maxfiy tanlash ro'yxatiga yoziladi."""
+    if event.new_chat_member.user.id != bot.id:
+        return
+    chat = event.chat
+    new_status = event.new_chat_member.status
+    disc_repo = DiscoveredChatRepository(session)
+
+    if new_status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+        await disc_repo.delete_by_chat_id(chat.id)
+        return
+
+    if chat.type not in (ChatType.CHANNEL, ChatType.SUPERGROUP):
+        return
+
+    try:
+        full = await bot.get_chat(chat.id)
+    except Exception:
+        logger.exception("my_chat_member: get_chat failed for %s", chat.id)
+        return
+
+    title = (full.title or str(chat.id)).strip() or str(chat.id)
+    invite_link: Optional[str] = getattr(full, "invite_link", None) or None
+    if not invite_link:
+        try:
+            invite_link = await bot.export_chat_invite_link(chat.id)
+        except Exception:
+            invite_link = None
+
+    chat_type_val = chat.type.value if hasattr(chat.type, "value") else str(chat.type)
+    await disc_repo.upsert_from_chat(
+        chat_id=chat.id,
+        chat_title=title,
+        chat_type=chat_type_val,
+        invite_link=invite_link,
+    )
+
+
 def _channels_admin_text(channels: list) -> str:
     n = len(channels)
     text = f"""📣 <b>Majburiy obuna kanallari</b> ({n}/5)
 
 Foydalanuvchi botdan foydalanishi uchun <b>barcha faol</b> kanal va guruhlarga a'zo bo'lishi kerak.
+
+Ochiq kanal: <b>➕ @username</b>  |  Maxfiy (<code>t.me/+…</code>): <b>🔐 Maxfiy</b>
 
 ✅ — faol  |  ❌ — nofaol
 """
@@ -690,6 +738,8 @@ async def admin_channels(
         return
 
     await safe_callback_answer(callback)
+
+    await state.clear()
 
     channel_repo = ChannelRepository(session)
     channels = await channel_repo.get_all_channels()
@@ -725,9 +775,126 @@ async def channel_add(callback: CallbackQuery, state: FSMContext):
         "➕ <b>Majburiy kanal/guruh qo'shish</b>\n\n"
         "Ochiq kanal yoki guruh <b>@username</b> ni yuboring (@ bilan yoki @ siz):\n"
         "Masalan: <code>@kanal</code>\n\n"
+        "Maxfiy kanal (<code>https://t.me/+…</code>): <b>Majburiy obuna</b> ekranidagi "
+        "<b>🔐 Maxfiy</b> tugmasidan tanlang.\n\n"
         "⚠️ Bot ushbu chatda <b>admin</b> bo'lishi kerak.\n"
         "⚠️ Maksimal <b>5 ta</b> majburiy obuna.",
         reply_markup=get_admin_back_keyboard(),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "channel:add_private")
+async def channel_add_private(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+):
+    """Maxfiy kanallar ro'yxati (bot admin bo'lgan kanallar/superguruhlar)."""
+    if not is_admin(callback.from_user.id):
+        await safe_callback_answer(callback, "❌ Ruxsat yo'q", show_alert=True)
+        return
+
+    await state.clear()
+    channel_repo = ChannelRepository(session)
+    if await channel_repo.count_all_channels() >= 5:
+        await safe_callback_answer(
+            callback,
+            "Maksimal 5 ta majburiy kanal/guruh. Avval birini o'chiring.",
+            show_alert=True,
+        )
+        return
+
+    disc_repo = DiscoveredChatRepository(session)
+    rows = await disc_repo.list_not_in_required()
+    await safe_callback_answer(callback)
+
+    if not rows:
+        text = (
+            "🔐 <b>Maxfiy kanal tanlash</b>\n\n"
+            "<i>Bot admin bo'lgan maxfiy kanallar hozircha yo'q yoki "
+            "hammasi allaqachon majburiy ro'yxatda.</i>\n\n"
+            "Maxfiy kanal yoki superguruhga botni <b>admin</b> qiling, "
+            "so'ngra qaytadan <b>🔐 Maxfiy</b> tugmasini bosing."
+        )
+    else:
+        text = (
+            "🔐 <b>Maxfiy kanal tanlash</b>\n\n"
+            "Quyida bot <b>admin</b> bo'lgan kanal va superguruhlar. "
+            "Keraklisini tanlang — majburiy obunaga qo'shiladi.\n\n"
+            "<i>Havola ko'rinishi: <code>https://t.me/+…</code> — obuna tekshiruvi "
+            "taklif havolasi orqali ishlaydi.</i>"
+        )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=get_discovered_private_pick_keyboard(rows),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("chpk:"))
+async def channel_pick_private(
+    callback: CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    session: AsyncSession,
+):
+    if not is_admin(callback.from_user.id):
+        await safe_callback_answer(callback, "❌ Ruxsat yo'q", show_alert=True)
+        return
+
+    await state.clear()
+    try:
+        row_id = int(callback.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        await safe_callback_answer(callback, "❌ Noto'g'ri", show_alert=True)
+        return
+
+    disc_repo = DiscoveredChatRepository(session)
+    row = await disc_repo.get_by_row_id(row_id)
+    if not row:
+        await safe_callback_answer(callback, "❌ Topilmadi", show_alert=True)
+        return
+
+    invite_link = row.invite_link
+    if not invite_link:
+        try:
+            invite_link = await bot.export_chat_invite_link(row.chat_id)
+        except Exception:
+            invite_link = None
+        if invite_link:
+            row.invite_link = invite_link
+            await session.commit()
+
+    if not invite_link:
+        await safe_callback_answer(
+            callback,
+            "Taklif havolasini olib bo'lmadi. Botda «Foydalanuvchilarni qo'shish» "
+            "yoki shunga o'xshash huquq bo'lishi kerak.",
+            show_alert=True,
+        )
+        return
+
+    channel_repo = ChannelRepository(session)
+    try:
+        await channel_repo.add_channel(
+            channel_id=row.chat_id,
+            channel_username="private",
+            channel_title=row.chat_title,
+            invite_link=invite_link,
+        )
+    except MaxRequiredChannelsError:
+        await safe_callback_answer(
+            callback,
+            "Maksimal 5 ta majburiy kanal. Avval birini o'chiring.",
+            show_alert=True,
+        )
+        return
+
+    await safe_callback_answer(callback, "✅ Qo'shildi!")
+    channels = await channel_repo.get_all_channels()
+    await callback.message.edit_text(
+        _channels_admin_text(channels),
+        reply_markup=get_channels_keyboard(channels),
         parse_mode="HTML",
     )
 
@@ -740,8 +907,20 @@ async def receive_channel_username(
     if not is_admin(message.from_user.id):
         return
     
-    username = message.text.strip().replace("@", "").replace("https://t.me/", "")
-    
+    raw = (message.text or "").strip()
+    low = raw.lower()
+    if "t.me/+" in low or low.startswith("+") or "/+" in low:
+        await message.answer(
+            "Maxfiy kanal uchun <b>Majburiy obuna</b> → <b>🔐 Maxfiy</b> tugmasidan "
+            "ro'yxatdan tanlang (havola matnini shu yerga yubormang).",
+            reply_markup=get_admin_back_keyboard(),
+            parse_mode="HTML",
+        )
+        await state.clear()
+        return
+
+    username = raw.replace("@", "").replace("https://t.me/", "")
+
     try:
         chat = await bot.get_chat(f"@{username}")
         
