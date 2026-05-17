@@ -88,17 +88,17 @@ async def _add_required_channel_from_telegram_chat_id(
     except TelegramBadRequest as e:
         err = (getattr(e, "message", None) or str(e)).lower()
         logger.warning("get_chat TelegramBadRequest chat_id=%s: %s", chat_id, e)
-        hint = ""
-        if hint_title:
-            hint = f"\n\n<i>Tanlangan nom:</i> {html_decoration.quote(hint_title.strip() or '—')}"
         if "chat not found" in err or "not found" in err:
             return False, (
-                "❌ Telegram <code>chat not found</code> — bot ushbu kanalni hali ko‘ra olmayapti.\n\n"
-                "Maxfiy kanalga avvalo botni <b>admin</b> qiling, keyin "
-                "<b>Majburiy obuna</b> → <b>🔐 Maxfiy kanal</b> yoki pastdagi shu tugmani bosing, "
-                "so‘ng <b>📢 Kanal ulash</b> orqali qayta tanlang."
-                + hint
+                "⚠️ <b>Bot ushbu kanalda admin emas</b> yoki bot kanalga hali ulanmagan.\n\n"
+                "Kanalda <b>Administratorlar</b> bo‘limidan botni qo‘shing va unga "
+                "<b>administrator</b> huquqi bering, so‘ng "
+                "<b>Majburiy obuna</b> → <b>🔐 Maxfiy kanal</b> → <b>📢 Kanal ulash</b> "
+                "orqali kanalni qayta tanlang."
             )
+        hint = ""
+        if hint_title:
+            hint = f"\n\n<i>Kanal:</i> {html_decoration.quote(hint_title.strip() or '—')}"
         return False, (
             "❌ Kanalni olishda xatolik. Bot kanalda <b>admin</b> bo‘lishi kerak." + hint
         )

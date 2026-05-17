@@ -72,6 +72,9 @@ def setup_middlewares(dp: Dispatcher, *, taronja: bool = False) -> None:
     dp.callback_query.middleware(UserMiddleware(taronja=taronja))
     dp.callback_query.middleware(SubscriptionMiddleware())
 
+    # my_chat_member uchun alohida: session handlerga kelishi kerak (admin.router)
+    dp.my_chat_member.middleware(DatabaseMiddleware())
+
 
 async def run_bot_instance(token: str, *, taronja: bool, label: str) -> None:
     bot = Bot(
