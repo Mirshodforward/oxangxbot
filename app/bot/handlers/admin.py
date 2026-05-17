@@ -6,6 +6,7 @@ import asyncio
 from typing import Optional, Union
 
 from aiogram import Router, F, Bot
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, ChatMemberUpdated, ReplyKeyboardRemove
 from aiogram.enums import ChatMemberStatus, ParseMode, ChatType
 from aiogram.filters import Command, StateFilter
@@ -84,8 +85,24 @@ async def _add_required_channel_from_telegram_chat_id(
     """
     try:
         chat = await bot.get_chat(chat_id)
+    except TelegramBadRequest as e:
+        err = (getattr(e, "message", None) or str(e)).lower()
+        logger.warning("get_chat TelegramBadRequest chat_id=%s: %s", chat_id, e)
+        hint = ""
+        if hint_title:
+            hint = f"\n\n<i>Tanlangan nom:</i> {html_decoration.quote(hint_title.strip() or '—')}"
+        if "chat not found" in err or "not found" in err:
+            return False, (
+                "❌ Telegram <code>chat not found</code> — bot ushbu kanalni hali ko‘ra olmayapti.\n\n"
+                "Maxfiy kanalga avvalo botni <b>admin</b> qiling, so‘ng "
+                "<b>📎 Kanalni ulash (Telegram)</b> → <b>📢 Kanal ulash</b> orqali qayta tanlang."
+                + hint
+            )
+        return False, (
+            "❌ Kanalni olishda xatolik. Bot kanalda <b>admin</b> bo‘lishi kerak." + hint
+        )
     except Exception:
-        logger.exception("get_chat failed chat_id=%s", chat_id)
+        logger.warning("get_chat failed chat_id=%s", chat_id, exc_info=True)
         return False, (
             "❌ Kanalni olishda xatolik. Bot kanalda <b>admin</b> bo'lishi va "
             "siz tanlagan kanal bilan bog'lanishi kerak."
@@ -93,6 +110,13 @@ async def _add_required_channel_from_telegram_chat_id(
 
     if chat.type not in (ChatType.CHANNEL, ChatType.SUPERGROUP):
         return False, "❌ Faqat <b>kanal</b> tanlansin."
+
+    pub_un = (getattr(chat, "username", None) or "").strip()
+    if pub_un:
+        return False, (
+            "❌ Bu qadam faqat <b>maxfiy</b> (@yo‘q) kanallar uchun.\n"
+            "Ochiq kanal: <b>➕ @username</b>."
+        )
 
     bot_member = await bot.get_chat_member(chat.id, bot.id)
     if bot_member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
@@ -182,12 +206,13 @@ async def _send_admin_tg_channel_pick_prompt(message: Message, state: FSMContext
     await state.set_state(AdminStates.waiting_chat_share)
     cancel_lbl = html_decoration.quote(TG_CHANNEL_PICK_CANCEL)
     await message.answer(
-        "📎 <b>Kanalni ulash (Telegram)</b>\n\n"
-        "Pastdagi <b>«📢 Kanal ulash»</b> tugmasini bosing — "
-        "Telegram <b>Choose a Channel</b> oynasini ochadi "
-        "(<code>KeyboardButtonRequestChat</code>: <code>chat_is_channel=True</code>, "
-        "<code>bot_is_member=False</code>).\n\n"
-        "Tanlangach kanal <b>majburiy obunaga</b> ulanadi. Bot kanalda <b>admin</b> bo‘lishi kerak.\n\n"
+        "📎 <b>Kanalni ulash (Telegram)</b> — faqat <b>maxfiy</b> kanallar\n\n"
+        "Pastdagi <b>«📢 Kanal ulash»</b> tugmasini bosing. Telegramda "
+        "<b>Choose a Channel</b> ochiladi: <code>chat_is_channel=True</code>, "
+        "<code>chat_has_username=False</code> (@siz), <code>bot_is_member=True</code> "
+        "(faqat bot allaqachon ichidagi maxfiy kanallar).\n\n"
+        "Agar ro‘yxat bo‘sh bo‘lsa: botni maxfiy kanalga <b>admin</b> qiling, keyin qayta urinib ko‘ring.\n\n"
+        "Tanlangach <code>chat_id</code> majburiy obunaga ulanadi.\n\n"
         f"Bekor: <b>{cancel_lbl}</b>.",
         reply_markup=get_mandatory_channel_request_chat_keyboard(),
         parse_mode="HTML",
@@ -219,7 +244,7 @@ Botni boshqarish uchun quyidagi tugmalardan foydalaning:
 👥 <b>Foydalanuvchilar</b> - User analitikasi
 📢 <b>Broadcast</b> - Xabar yuborish
 📣 <b>Majburiy obuna</b> - Kanallar boshqaruvi
-📎 <b>Kanalni ulash (Telegram)</b> - Tanlash oynasi, <code>chat_id</code> (User Info bot kabi)
+📎 <b>Kanalni ulash (Telegram)</b> — maxfiy kanal (<code>📢 Kanal ulash</code>)
 """
     
     if edit and hasattr(message, "edit_text"):
@@ -828,7 +853,7 @@ def _channels_admin_text(channels: list) -> str:
 
 Foydalanuvchi botdan foydalanishi uchun <b>barcha faol</b> kanal va guruhlarga a'zo bo'lishi kerak.
 
-Ochiq: <b>➕ @username</b>  |  Maxfiy: <b>🔐 Maxfiy kanallar</b>  |  TG: <b>📎 Kanalni ulash</b> (pastdagi tugma ham)
+Ochiq kanal: <b>➕ @username</b>  |  Maxfiy: pastdagi <b>📎 Kanalni ulash (Telegram)</b> → <b>📢 Kanal ulash</b>
 
 ✅ — faol  |  ❌ — nofaol
 """
@@ -884,8 +909,7 @@ async def channel_add(callback: CallbackQuery, state: FSMContext):
         "➕ <b>Majburiy kanal/guruh qo'shish</b>\n\n"
         "Ochiq kanal yoki guruh <b>@username</b> ni yuboring (@ bilan yoki @ siz):\n"
         "Masalan: <code>@kanal</code>\n\n"
-        "Maxfiy kanal (<code>https://t.me/+…</code>): <b>Majburiy obuna</b> ekranidagi "
-        "<b>🔐 Maxfiy kanallar</b> tugmasidan tanlang — ro'yxatda <code>chat_id</code> ko'rinadi.\n\n"
+        "Maxfiy kanal: admin panel pastidagi <b>📎 Kanalni ulash (Telegram)</b> → <b>📢 Kanal ulash</b>.\n\n"
         "⚠️ Bot ushbu chatda <b>admin</b> bo'lishi kerak.\n"
         "⚠️ Maksimal <b>5 ta</b> majburiy obuna.",
         reply_markup=get_admin_back_keyboard(),
@@ -1160,8 +1184,7 @@ async def receive_channel_username(
     low = raw.lower()
     if "t.me/+" in low or low.startswith("+") or "/+" in low:
         await message.answer(
-            "Maxfiy kanal uchun <b>Majburiy obuna</b> → <b>🔐 Maxfiy kanallar</b> tugmasidan "
-            "ro'yxatdan tanlang (havola matnini shu yerga yubormang).",
+            "Maxfiy kanal: admin panel pastidagi <b>📎 Kanalni ulash (Telegram)</b> → <b>📢 Kanal ulash</b>.\n",
             reply_markup=get_admin_back_keyboard(),
             parse_mode="HTML",
         )

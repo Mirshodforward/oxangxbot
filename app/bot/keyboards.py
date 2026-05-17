@@ -23,13 +23,13 @@ TG_CHANNEL_PICK_CANCEL = "❌ Bekor"
 
 def get_mandatory_channel_request_chat_keyboard() -> ReplyKeyboardMarkup:
     """
-    KeyboardButtonRequestChat — Telegram «Choose a Channel» oynasi.
-    bot_is_member=False — bot hali a’zo bo‘lmagan kanallar ham ro‘yxatda chiqishi mumkin.
+    Faqat maxfiy kanallar (@ yo‘q) va bot allaqachon ichida bo‘lganlar — get_chat / taklif havolasi ishlashi uchun.
     """
     req = KeyboardButtonRequestChat(
         request_id=REQUEST_CHAT_ADD_REQUIRED_CHANNEL,
         chat_is_channel=True,
-        bot_is_member=False,
+        chat_has_username=False,
+        bot_is_member=True,
         request_title=True,
         request_username=True,
     )
@@ -452,19 +452,7 @@ def get_channels_keyboard(channels: list) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=add_text, callback_data="channel:add_limit")
         )
     else:
-        builder.row(
-            InlineKeyboardButton(text="➕ @username", callback_data="channel:add"),
-            InlineKeyboardButton(
-                text="🔐 Maxfiy kanallar",
-                callback_data="channel:add_private",
-            ),
-        )
-    builder.row(
-        InlineKeyboardButton(
-            text="📎 Kanalni ulash (Telegram)",
-            callback_data="channel:add_tg_pick",
-        )
-    )
+        builder.row(InlineKeyboardButton(text="➕ @username", callback_data="channel:add"))
     builder.row(
         InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin:back")
     )
