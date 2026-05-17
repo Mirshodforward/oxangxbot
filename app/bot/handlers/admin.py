@@ -94,8 +94,9 @@ async def _add_required_channel_from_telegram_chat_id(
         if "chat not found" in err or "not found" in err:
             return False, (
                 "❌ Telegram <code>chat not found</code> — bot ushbu kanalni hali ko‘ra olmayapti.\n\n"
-                "Maxfiy kanalga avvalo botni <b>admin</b> qiling, so‘ng "
-                "<b>📎 Kanalni ulash (Telegram)</b> → <b>📢 Kanal ulash</b> orqali qayta tanlang."
+                "Maxfiy kanalga avvalo botni <b>admin</b> qiling, keyin "
+                "<b>Majburiy obuna</b> → <b>🔐 Maxfiy kanal</b> yoki pastdagi shu tugmani bosing, "
+                "so‘ng <b>📢 Kanal ulash</b> orqali qayta tanlang."
                 + hint
             )
         return False, (
@@ -206,7 +207,7 @@ async def _send_admin_tg_channel_pick_prompt(message: Message, state: FSMContext
     await state.set_state(AdminStates.waiting_chat_share)
     cancel_lbl = html_decoration.quote(TG_CHANNEL_PICK_CANCEL)
     await message.answer(
-        "📎 <b>Kanalni ulash (Telegram)</b> — faqat <b>maxfiy</b> kanallar\n\n"
+        "🔐 <b>Maxfiy kanal</b> — faqat <b>maxfiy</b> kanallar\n\n"
         "Pastdagi <b>«📢 Kanal ulash»</b> tugmasini bosing. Telegramda "
         "<b>Choose a Channel</b> ochiladi: <code>chat_is_channel=True</code>, "
         "<code>chat_has_username=False</code> (@siz), <code>bot_is_member=True</code> "
@@ -244,7 +245,7 @@ Botni boshqarish uchun quyidagi tugmalardan foydalaning:
 👥 <b>Foydalanuvchilar</b> - User analitikasi
 📢 <b>Broadcast</b> - Xabar yuborish
 📣 <b>Majburiy obuna</b> - Kanallar boshqaruvi
-📎 <b>Kanalni ulash (Telegram)</b> — maxfiy kanal (<code>📢 Kanal ulash</code>)
+🔐 <b>Maxfiy kanal</b> — Telegram orqali kanal tanlash (<code>📢 Kanal ulash</code>)
 """
     
     if edit and hasattr(message, "edit_text"):
@@ -853,7 +854,9 @@ def _channels_admin_text(channels: list) -> str:
 
 Foydalanuvchi botdan foydalanishi uchun <b>barcha faol</b> kanal va guruhlarga a'zo bo'lishi kerak.
 
-Ochiq kanal: <b>➕ @username</b>  |  Maxfiy: pastdagi <b>📎 Kanalni ulash (Telegram)</b> → <b>📢 Kanal ulash</b>
+Kanal qo'shish:
+• <b>➕ @username</b> — ochiq kanal
+• <b>🔐 Maxfiy kanal</b> — Telegram kanal tanlash (xuddi shu nomli pastki tugma ham)
 
 ✅ — faol  |  ❌ — nofaol
 """
@@ -909,7 +912,8 @@ async def channel_add(callback: CallbackQuery, state: FSMContext):
         "➕ <b>Majburiy kanal/guruh qo'shish</b>\n\n"
         "Ochiq kanal yoki guruh <b>@username</b> ni yuboring (@ bilan yoki @ siz):\n"
         "Masalan: <code>@kanal</code>\n\n"
-        "Maxfiy kanal: admin panel pastidagi <b>📎 Kanalni ulash (Telegram)</b> → <b>📢 Kanal ulash</b>.\n\n"
+        "Maxfiy kanal: <b>Majburiy obuna</b> bo‘limidagi <b>🔐 Maxfiy kanal</b> tugmasi yoki "
+        "admin panel pastidagi shu nomli tugma → <b>📢 Kanal ulash</b>.\n\n"
         "⚠️ Bot ushbu chatda <b>admin</b> bo'lishi kerak.\n"
         "⚠️ Maksimal <b>5 ta</b> majburiy obuna.",
         reply_markup=get_admin_back_keyboard(),
@@ -927,7 +931,7 @@ async def channel_add_tg_pick(callback: CallbackQuery, state: FSMContext):
     if callback.message.chat.type != ChatType.PRIVATE:
         await safe_callback_answer(
             callback,
-            "Kanalni Telegram orqali tanlash faqat bot bilan shaxsiy chatda ishlaydi. "
+            "🔐 Maxfiy kanal tanlash faqat bot bilan shaxsiy chatda ishlaydi. "
             "Botga shaxsiy xabar yuboring.",
             show_alert=True,
         )
@@ -1184,7 +1188,7 @@ async def receive_channel_username(
     low = raw.lower()
     if "t.me/+" in low or low.startswith("+") or "/+" in low:
         await message.answer(
-            "Maxfiy kanal: admin panel pastidagi <b>📎 Kanalni ulash (Telegram)</b> → <b>📢 Kanal ulash</b>.\n",
+            "Maxfiy kanal: <b>Majburiy obuna</b> → <b>🔐 Maxfiy kanal</b> yoki pastdagi shu tugma → <b>📢 Kanal ulash</b>.\n",
             reply_markup=get_admin_back_keyboard(),
             parse_mode="HTML",
         )
@@ -1386,7 +1390,7 @@ Yuborish usulini tanlang:
     if label == ADMIN_REPLY_BTN_LINK_CHANNEL_TG:
         if message.chat.type != ChatType.PRIVATE:
             await message.answer(
-                "📎 Kanalni Telegram orqali ulash faqat bot bilan <b>shaxsiy chatda</b> ishlaydi.",
+                "🔐 Maxfiy kanal tanlash faqat bot bilan <b>shaxsiy chatda</b> ishlaydi.",
                 parse_mode="HTML",
             )
             return
