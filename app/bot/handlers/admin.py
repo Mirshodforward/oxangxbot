@@ -183,9 +183,10 @@ async def _send_admin_tg_channel_pick_prompt(message: Message, state: FSMContext
     cancel_lbl = html_decoration.quote(TG_CHANNEL_PICK_CANCEL)
     await message.answer(
         "📎 <b>Kanalni ulash (Telegram)</b>\n\n"
-        "Pastdagi <b>«📢 Kanalni tanlash (Telegram)»</b> tugmasini bosing — "
-        "Telegram kanal tanlash oynasini ochadi (User Info bot kabi: tanlanganda "
-        "<code>chat_id</code> botga yuboriladi).\n\n"
+        "Pastdagi <b>«📢 Kanal ulash»</b> tugmasini bosing — "
+        "Telegram <b>Choose a Channel</b> oynasini ochadi "
+        "(<code>KeyboardButtonRequestChat</code>: <code>chat_is_channel=True</code>, "
+        "<code>bot_is_member=False</code>).\n\n"
         "Tanlangach kanal <b>majburiy obunaga</b> ulanadi. Bot kanalda <b>admin</b> bo‘lishi kerak.\n\n"
         f"Bekor: <b>{cancel_lbl}</b>.",
         reply_markup=get_mandatory_channel_request_chat_keyboard(),
@@ -1141,7 +1142,7 @@ async def channel_tg_pick_waiting_text(message: Message):
         return
     cancel_lbl = html_decoration.quote(TG_CHANNEL_PICK_CANCEL)
     await message.answer(
-        "Iltimos, pastdagi <b>«📢 Kanalni tanlash (Telegram)»</b> tugmasini bosing "
+        "Iltimos, pastdagi <b>«📢 Kanal ulash»</b> tugmasini bosing "
         f"yoki <b>{cancel_lbl}</b>.",
         parse_mode="HTML",
     )

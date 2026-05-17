@@ -16,20 +16,20 @@ from app.bot.locales import (
     get_text, LANGUAGES, LANG_UZ, LANG_UZ_CYRL, LANG_RU, LANG_EN
 )
 
-# Telegram «Choose a Channel» (KeyboardButtonRequestChat) — chat_shared.request_id
-REQUEST_CHAT_ADD_REQUIRED_CHANNEL = 71928341
+# Telegram «Choose a Channel» — chat_shared.request_id (xabar ichida noyob bo‘lishi kerak)
+REQUEST_CHAT_ADD_REQUIRED_CHANNEL = 1
 TG_CHANNEL_PICK_CANCEL = "❌ Bekor"
 
 
 def get_mandatory_channel_request_chat_keyboard() -> ReplyKeyboardMarkup:
     """
-    Telegramning o‘zi ochadigan «Choose a Channel» oynasi.
-    chat_is_created=True — odatda «owner» talabi bilan ro‘yxat.
+    KeyboardButtonRequestChat — Telegram «Choose a Channel» oynasi.
+    bot_is_member=False — bot hali a’zo bo‘lmagan kanallar ham ro‘yxatda chiqishi mumkin.
     """
     req = KeyboardButtonRequestChat(
         request_id=REQUEST_CHAT_ADD_REQUIRED_CHANNEL,
         chat_is_channel=True,
-        chat_is_created=True,
+        bot_is_member=False,
         request_title=True,
         request_username=True,
     )
@@ -37,7 +37,7 @@ def get_mandatory_channel_request_chat_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [
                 KeyboardButton(
-                    text="📢 Kanalni tanlash (Telegram)",
+                    text="📢 Kanal ulash",
                     request_chat=req,
                 ),
             ],
