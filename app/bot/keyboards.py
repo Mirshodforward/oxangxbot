@@ -3,7 +3,8 @@ from aiogram.types import (
     InlineKeyboardButton,
     ReplyKeyboardMarkup,
     KeyboardButton,
-    ReplyKeyboardRemove
+    ReplyKeyboardRemove,
+    KeyboardButtonRequestChat,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from typing import Optional, List
@@ -14,6 +15,37 @@ from app.services.fastsaver_api import MusicSearchResult
 from app.bot.locales import (
     get_text, LANGUAGES, LANG_UZ, LANG_UZ_CYRL, LANG_RU, LANG_EN
 )
+
+# Telegram «Choose a Channel» (KeyboardButtonRequestChat) — chat_shared.request_id
+REQUEST_CHAT_ADD_REQUIRED_CHANNEL = 71928341
+TG_CHANNEL_PICK_CANCEL = "❌ Bekor"
+
+
+def get_mandatory_channel_request_chat_keyboard() -> ReplyKeyboardMarkup:
+    """
+    Telegramning o‘zi ochadigan «Choose a Channel» oynasi.
+    chat_is_created=True — odatda «owner» talabi bilan ro‘yxat.
+    """
+    req = KeyboardButtonRequestChat(
+        request_id=REQUEST_CHAT_ADD_REQUIRED_CHANNEL,
+        chat_is_channel=True,
+        chat_is_created=True,
+        request_title=True,
+        request_username=True,
+    )
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                KeyboardButton(
+                    text="📢 Kanalni tanlash (Telegram)",
+                    request_chat=req,
+                ),
+            ],
+            [KeyboardButton(text=TG_CHANNEL_PICK_CANCEL)],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
 
 
 def get_language_selection_keyboard() -> InlineKeyboardMarkup:
@@ -327,6 +359,8 @@ ADMIN_REPLY_BTN_USERS = "👥 Foydalanuvchilar"
 ADMIN_REPLY_BTN_BROADCAST = "📢 Post yuborish"
 ADMIN_REPLY_BTN_CHANNELS = "📣 Majburiy obuna"
 ADMIN_REPLY_BTN_CACHE = "🗄️ Kesh statistikasi"
+# User Info bot uslubi: KeyboardButtonRequestChat → chat_shared (chat_id majburiy obunaga)
+ADMIN_REPLY_BTN_LINK_CHANNEL_TG = "📎 Kanalni ulash (Telegram)"
 
 
 ADMIN_MAIN_REPLY_TEXTS: frozenset[str] = frozenset(
@@ -336,6 +370,7 @@ ADMIN_MAIN_REPLY_TEXTS: frozenset[str] = frozenset(
         ADMIN_REPLY_BTN_BROADCAST,
         ADMIN_REPLY_BTN_CHANNELS,
         ADMIN_REPLY_BTN_CACHE,
+        ADMIN_REPLY_BTN_LINK_CHANNEL_TG,
     }
 )
 
@@ -352,6 +387,7 @@ def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text=ADMIN_REPLY_BTN_CHANNELS),
     )
     builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_CACHE))
+    builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_LINK_CHANNEL_TG))
 
     return builder.as_markup(resize_keyboard=True)
 
@@ -418,8 +454,17 @@ def get_channels_keyboard(channels: list) -> InlineKeyboardMarkup:
     else:
         builder.row(
             InlineKeyboardButton(text="➕ @username", callback_data="channel:add"),
-            InlineKeyboardButton(text="🔐 Maxfiy", callback_data="channel:add_private"),
+            InlineKeyboardButton(
+                text="🔐 Maxfiy kanallar",
+                callback_data="channel:add_private",
+            ),
         )
+    builder.row(
+        InlineKeyboardButton(
+            text="📎 Kanalni ulash (Telegram)",
+            callback_data="channel:add_tg_pick",
+        )
+    )
     builder.row(
         InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin:back")
     )
@@ -427,18 +472,31 @@ def get_channels_keyboard(channels: list) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_discovered_private_pick_keyboard(rows: list) -> InlineKeyboardMarkup:
-    """Maxfiy kanallar ro'yxati (bot admin bo'lgan)."""
+def get_discovered_private_pick_keyboard(
+    rows: list,
+    required_chat_ids: Optional[set] = None,
+) -> InlineKeyboardMarkup:
+    """Maxfiy kanallar ro'yxati (bot admin bo'lgan). required_chat_ids — majburiy obunada bor chat_id lar."""
+    required_chat_ids = required_chat_ids or set()
     builder = InlineKeyboardBuilder()
     for row in rows:
         raw = (row.chat_title or "Kanal").strip() or "Kanal"
-        short = raw if len(raw) <= 42 else raw[:39] + "…"
-        builder.row(
-            InlineKeyboardButton(
-                text=f"🔐 {short}",
-                callback_data=f"chpk:{row.id}",
+        short = raw if len(raw) <= 36 else raw[:33] + "…"
+        linked = row.chat_id in required_chat_ids
+        if linked:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"✅ {short}",
+                    callback_data=f"chpkv:{row.id}",
+                )
             )
-        )
+        else:
+            builder.row(
+                InlineKeyboardButton(
+                    text=f"🔗 {short}",
+                    callback_data=f"chpk:{row.id}",
+                )
+            )
     builder.row(
         InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin:channels")
     )

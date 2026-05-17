@@ -697,6 +697,13 @@ class DiscoveredChatRepository:
         )
         return list(result.scalars().all())
 
+    async def list_all_ordered(self) -> list[DiscoveredAdminChat]:
+        """Barcha kashf etilgan maxfiy kanal/superguruhlar (admin ro'yxati uchun)."""
+        result = await self.session.execute(
+            select(DiscoveredAdminChat).order_by(DiscoveredAdminChat.chat_title)
+        )
+        return list(result.scalars().all())
+
 
 class BroadcastRepository:
     """Repository for broadcast operations"""
