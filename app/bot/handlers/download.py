@@ -397,7 +397,8 @@ async def send_media_to_user(
         bot_username = "Oxangxbot"
 
     yt_vid = extract_youtube_video_id(original_url)
-    keyboard = get_download_keyboard(lang, youtube_video_id=yt_vid)
+    _is_video = fetch_media_is_video(media_info.media_type) or bool(yt_vid)
+    keyboard = get_download_keyboard(lang, youtube_video_id=yt_vid, is_video=_is_video)
 
     url_hash = get_url_hash(original_url)
 

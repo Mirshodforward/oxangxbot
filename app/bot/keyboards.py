@@ -329,25 +329,42 @@ def get_back_keyboard(callback_data: str = "back") -> InlineKeyboardMarkup:
 
 
 def get_download_keyboard(
-    lang: str, youtube_video_id: Optional[str] = None
+    lang: str,
+    youtube_video_id: Optional[str] = None,
+    is_video: bool = True,
 ) -> InlineKeyboardMarkup:
-    """Download keyboard: YouTube — to'g'ridan-to'g'ri MP3 (tg-bot file_id); boshqa — Shazam."""
+    """Download keyboard.
+
+    YouTube video → MP3 yuklab olish + Musiqani topish (Shazam).
+    Boshqa video  → faqat Musiqani topish (Shazam).
+    Rasm          → faqat Do'stlarga ulashish.
+    """
     builder = InlineKeyboardBuilder()
     vid = (youtube_video_id or "").strip()
-    audio_cb = f"yt_dl:{vid}:mp3" if vid else "shazam_this"
+
+    if vid:
+        builder.row(
+            InlineKeyboardButton(
+                text=get_text("btn_download_audio", lang),
+                callback_data=f"yt_dl:{vid}:mp3",
+            )
+        )
+
+    if is_video:
+        builder.row(
+            InlineKeyboardButton(
+                text=get_text("btn_find_music", lang),
+                callback_data="shazam_this",
+            )
+        )
+
     builder.row(
         InlineKeyboardButton(
-            text=get_text("btn_download_audio", lang),
-            callback_data=audio_cb,
+            text=get_text("btn_share", lang),
+            switch_inline_query="",
         )
     )
-    
-    # "Do'stlarga tarqatish"
-    builder.row(InlineKeyboardButton(
-        text=get_text("btn_share", lang),
-        switch_inline_query=""
-    ))
-    
+
     return builder.as_markup()
 
 

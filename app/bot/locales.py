@@ -531,6 +531,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         LANG_RU: "📥 Скачать песню",
         LANG_EN: "📥 Download song"
     },
+
+    "btn_find_music": {
+        LANG_UZ: "🎵 Musiqani topish",
+        LANG_UZ_CYRL: "🎵 Мусиқани топиш",
+        LANG_RU: "🎵 Найти музыку",
+        LANG_EN: "🎵 Find music"
+    },
     
     "btn_share": {
         LANG_UZ: "↗️ Do'stlarga ulashish",
