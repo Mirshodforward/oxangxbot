@@ -36,7 +36,6 @@ from app.bot.keyboards import (
     ADMIN_REPLY_BTN_CHANNELS,
     ADMIN_REPLY_BTN_STATS,
     ADMIN_REPLY_BTN_USERS,
-    ADMIN_REPLY_BTN_LINK_CHANNEL_TG,
     get_admin_main_keyboard,
     get_broadcast_keyboard,
     get_channels_keyboard,
@@ -92,9 +91,8 @@ async def _add_required_channel_from_telegram_chat_id(
             return False, (
                 "⚠️ <b>Bot ushbu kanalda admin emas</b> yoki bot kanalga hali ulanmagan.\n\n"
                 "Kanalda <b>Administratorlar</b> bo‘limidan botni qo‘shing va unga "
-                "<b>administrator</b> huquqi bering, so‘ng "
-                "<b>Majburiy obuna</b> → <b>🔐 Maxfiy kanal</b> → <b>📢 Kanal ulash</b> "
-                "orqali kanalni qayta tanlang."
+                "<b>administrator</b> huquqi bering, so‘ng kanalni "
+                "<b>➕ @username</b> orqali qayta qo‘shing."
             )
         hint = ""
         if hint_title:
@@ -245,7 +243,6 @@ Botni boshqarish uchun quyidagi tugmalardan foydalaning:
 👥 <b>Foydalanuvchilar</b> - User analitikasi
 📢 <b>Broadcast</b> - Xabar yuborish
 📣 <b>Majburiy obuna</b> - Kanallar boshqaruvi
-🔐 <b>Maxfiy kanal</b> — Telegram orqali kanal tanlash (<code>📢 Kanal ulash</code>)
 """
     
     if edit and hasattr(message, "edit_text"):
@@ -854,9 +851,7 @@ def _channels_admin_text(channels: list) -> str:
 
 Foydalanuvchi botdan foydalanishi uchun <b>barcha faol</b> kanal va guruhlarga a'zo bo'lishi kerak.
 
-Kanal qo'shish:
-• <b>➕ @username</b> — ochiq kanal
-• <b>🔐 Maxfiy kanal</b> — Telegram kanal tanlash (xuddi shu nomli pastki tugma ham)
+Kanal qo'shish: <b>➕ @username</b>
 
 ✅ — faol  |  ❌ — nofaol
 """
@@ -912,8 +907,6 @@ async def channel_add(callback: CallbackQuery, state: FSMContext):
         "➕ <b>Majburiy kanal/guruh qo'shish</b>\n\n"
         "Ochiq kanal yoki guruh <b>@username</b> ni yuboring (@ bilan yoki @ siz):\n"
         "Masalan: <code>@kanal</code>\n\n"
-        "Maxfiy kanal: <b>Majburiy obuna</b> bo‘limidagi <b>🔐 Maxfiy kanal</b> tugmasi yoki "
-        "admin panel pastidagi shu nomli tugma → <b>📢 Kanal ulash</b>.\n\n"
         "⚠️ Bot ushbu chatda <b>admin</b> bo'lishi kerak.\n"
         "⚠️ Maksimal <b>5 ta</b> majburiy obuna.",
         reply_markup=get_admin_back_keyboard(),
@@ -1188,7 +1181,8 @@ async def receive_channel_username(
     low = raw.lower()
     if "t.me/+" in low or low.startswith("+") or "/+" in low:
         await message.answer(
-            "Maxfiy kanal: <b>Majburiy obuna</b> → <b>🔐 Maxfiy kanal</b> yoki pastdagi shu tugma → <b>📢 Kanal ulash</b>.\n",
+            "Maxfiy kanal uchun bot kanalda <b>admin</b> bo‘lishi va taklif havolasi "
+            "mavjud bo‘lishi kerak. Ochiq kanal bo‘lsa <b>➕ @username</b> dan foydalaning.\n",
             reply_markup=get_admin_back_keyboard(),
             parse_mode="HTML",
         )
@@ -1385,16 +1379,6 @@ Yuborish usulini tanlang:
 💡 <i>HTML formatlash qo'llab-quvvatlanadi</i>
 """
         await message.answer(text, reply_markup=get_broadcast_keyboard(), parse_mode="HTML")
-        return
-
-    if label == ADMIN_REPLY_BTN_LINK_CHANNEL_TG:
-        if message.chat.type != ChatType.PRIVATE:
-            await message.answer(
-                "🔐 Maxfiy kanal tanlash faqat bot bilan <b>shaxsiy chatda</b> ishlaydi.",
-                parse_mode="HTML",
-            )
-            return
-        await _send_admin_tg_channel_pick_prompt(message, state)
         return
 
     if label == ADMIN_REPLY_BTN_CHANNELS:

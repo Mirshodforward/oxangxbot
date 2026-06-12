@@ -359,8 +359,6 @@ ADMIN_REPLY_BTN_USERS = "👥 Foydalanuvchilar"
 ADMIN_REPLY_BTN_BROADCAST = "📢 Post yuborish"
 ADMIN_REPLY_BTN_CHANNELS = "📣 Majburiy obuna"
 ADMIN_REPLY_BTN_CACHE = "🗄️ Kesh statistikasi"
-# User Info bot uslubi: KeyboardButtonRequestChat → chat_shared (chat_id majburiy obunaga)
-ADMIN_REPLY_BTN_LINK_CHANNEL_TG = "🔐 Maxfiy kanal"
 
 
 ADMIN_MAIN_REPLY_TEXTS: frozenset[str] = frozenset(
@@ -370,7 +368,6 @@ ADMIN_MAIN_REPLY_TEXTS: frozenset[str] = frozenset(
         ADMIN_REPLY_BTN_BROADCAST,
         ADMIN_REPLY_BTN_CHANNELS,
         ADMIN_REPLY_BTN_CACHE,
-        ADMIN_REPLY_BTN_LINK_CHANNEL_TG,
     }
 )
 
@@ -387,7 +384,6 @@ def get_admin_main_keyboard() -> ReplyKeyboardMarkup:
         KeyboardButton(text=ADMIN_REPLY_BTN_CHANNELS),
     )
     builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_CACHE))
-    builder.row(KeyboardButton(text=ADMIN_REPLY_BTN_LINK_CHANNEL_TG))
 
     return builder.as_markup(resize_keyboard=True)
 
@@ -452,10 +448,7 @@ def get_channels_keyboard(channels: list) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=add_text, callback_data="channel:add_limit")
         )
     else:
-        builder.row(
-            InlineKeyboardButton(text="➕ @username", callback_data="channel:add"),
-            InlineKeyboardButton(text="🔐 Maxfiy kanal", callback_data="channel:add_tg_pick"),
-        )
+        builder.row(InlineKeyboardButton(text="➕ @username", callback_data="channel:add"))
     builder.row(
         InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin:back")
     )

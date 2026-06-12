@@ -26,7 +26,6 @@ from app.utils.helpers import (
     extract_urls,
     extract_youtube_video_id,
     get_url_hash,
-    truncate_text,
     get_platform_emoji,
     get_platform_name,
     normalize_fetch_url,
@@ -372,17 +371,9 @@ async def _fetch_instagram_via_ytdlp(page_url: str) -> Optional[bytes]:
         shutil.rmtree(out_dir, ignore_errors=True)
 
 
-def _download_reply_caption(
-    lang: str,
-    bot_username: str,
-    post_caption: Optional[str],
-) -> str:
-    """Post matni + pastda 'yuklab olindi' — musiqa tugmasi captiondan qidiruv uchun."""
-    footer = get_text("downloaded_via", lang, bot_username=bot_username)
-    raw = (post_caption or "").strip()
-    if not raw:
-        return footer
-    return f"{truncate_text(raw, 850)}\n\n{footer}"
+def _download_reply_caption(lang: str, bot_username: str) -> str:
+    """Faqat «@bot orqali yuklab olindi» — post caption ko‘rsatilmaydi."""
+    return get_text("downloaded_via", lang, bot_username=bot_username)
 
 
 async def send_media_to_user(
@@ -405,7 +396,6 @@ async def send_media_to_user(
     except Exception:
         bot_username = "Oxangxbot"
 
-    post_caption = (media_info.caption or "").strip() or None
     yt_vid = extract_youtube_video_id(original_url)
     keyboard = get_download_keyboard(lang, youtube_video_id=yt_vid)
 
@@ -414,8 +404,7 @@ async def send_media_to_user(
     # Check cache for file_id
     cached = await cache_repo.get_by_hash(url_hash)
     if cached and cached.file_id:
-        cap_src = (cached.caption or "").strip() or post_caption
-        caption_text = _download_reply_caption(lang, bot_username, cap_src)
+        caption_text = _download_reply_caption(lang, bot_username)
         try:
             # Send cached file
             if cached.media_type == MediaType.VIDEO or fetch_media_is_video(media_info.media_type):
@@ -465,7 +454,7 @@ async def send_media_to_user(
         if not download_url:
             return False
 
-        caption_text = _download_reply_caption(lang, bot_username, post_caption)
+        caption_text = _download_reply_caption(lang, bot_username)
 
         media_type = (
             MediaType.VIDEO if fetch_media_is_video(media_info.media_type) else MediaType.IMAGE
@@ -681,14 +670,18 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
             return
     
     # For other platforms - get info and download
-    status_msg = await message.answer(f"⏳ {get_platform_emoji(platform)} Yuklanmoqda...")
+    status_msg = await message.answer("⏳")
     
     try:
         # Get media info from API
         media_info = await api.get_media_info(url)
         
         if media_info.error:
-            await status_msg.edit_text(
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+            await message.answer(
                 f"❌ Xatolik: {media_info.error_message or 'Media topilmadi'}"
             )
             return
@@ -725,9 +718,10 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
     except Exception as e:
         logger.error(f"Error handling URL: {e}")
         try:
-            await status_msg.edit_text("❌ Xatolik yuz berdi. Keyinroq urinib ko'ring.")
-        except:
-            await message.answer("❌ Xatolik yuz berdi.")
+            await status_msg.delete()
+        except Exception:
+            pass
+        await message.answer("❌ Xatolik yuz berdi. Keyinroq urinib ko'ring.")
 
 
 @router.callback_query(F.data.startswith("yt_dl:"))
