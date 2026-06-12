@@ -83,5 +83,9 @@ class Settings(BaseSettings):
             return None
         return str(v).strip()
 
+    # DB zaxira: backup.py / send.py / tikla.py
+    BACKUP_BOT_TOKEN: Optional[str] = None
+    BACKUP_SEND_CHAT_ID: Optional[str] = None
+
 
 settings = Settings()
