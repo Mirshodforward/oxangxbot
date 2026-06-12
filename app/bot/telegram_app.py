@@ -86,6 +86,12 @@ async def run_bot_instance(token: str, *, taronja: bool, label: str) -> None:
     setup_routers(dp)
     dp.startup.register(on_startup)
 
+    try:
+        await bot.delete_webhook(drop_pending_updates=False)
+        logger.info("[%s] Webhook o'chirildi (polling rejimi)", label)
+    except Exception as e:
+        logger.warning("[%s] delete_webhook: %s", label, e)
+
     logger.info("[%s] Polling ishga tushmoqda...", label)
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())

@@ -41,7 +41,17 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("TARONJA_BOT_TOKEN", "TARONABOT_TOKEN"),
     )
-    
+    # both | oxang | taronja — bir token faqat bitta jarayonda polling qilishi kerak
+    BOT_RUN_MODE: str = "both"
+
+    @field_validator("BOT_RUN_MODE", mode="before")
+    @classmethod
+    def normalize_bot_run_mode(cls, v: Any) -> str:
+        m = (str(v or "both")).strip().lower()
+        if m not in ("both", "oxang", "taronja"):
+            return "both"
+        return m
+
     # Bot info
     BOT_USERNAME: Optional[str] = None
     
