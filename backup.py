@@ -14,7 +14,6 @@ Talab: `pg_dump` tizimda mavjud bo'lishi kerak (PostgreSQL client).
 from __future__ import annotations
 
 import argparse
-import os
 import shutil
 import subprocess
 import sys
@@ -26,7 +25,7 @@ if _root not in sys.path:
     sys.path.insert(0, _root)
 
 from app.config import settings
-from app.utils.pg_tools import db_params
+from app.utils.pg_tools import db_params, pg_env
 
 
 def run_backup(out_dir: Path) -> Path:
@@ -49,9 +48,7 @@ def run_backup(out_dir: Path) -> Path:
     db_name = str(cfg["database"])
     out_path = out_dir / f"{db_name}_{ts}.sql"
 
-    env = os.environ.copy()
-    if cfg["password"]:
-        env["PGPASSWORD"] = str(cfg["password"])
+    env = pg_env(cfg)
 
     cmd = [
         pg_dump,

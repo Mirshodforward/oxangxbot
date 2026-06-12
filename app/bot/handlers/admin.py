@@ -480,7 +480,7 @@ async def receive_broadcast_photo(message: Message, state: FSMContext, session: 
     text = f"""📢 <b>Broadcast tasdiqlash</b>
 
 🖼 <b>Rasm yuklandi</b>
-📝 <b>Caption:</b> {message.caption[:200] if message.caption else 'Yo\'q'}
+📝 <b>Caption:</b> {message.caption[:200] if message.caption else "Yo'q"}
 
 👥 Yuboriladi: <b>{user_count}</b> ta userga
 """
@@ -508,7 +508,7 @@ async def receive_broadcast_video(message: Message, state: FSMContext, session: 
     text = f"""📢 <b>Broadcast tasdiqlash</b>
 
 🎬 <b>Video yuklandi</b>
-📝 <b>Caption:</b> {message.caption[:200] if message.caption else 'Yo\'q'}
+📝 <b>Caption:</b> {message.caption[:200] if message.caption else "Yo'q"}
 
 👥 Yuboriladi: <b>{user_count}</b> ta userga
 """

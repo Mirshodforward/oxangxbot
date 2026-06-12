@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import tempfile
 from typing import Optional, List
 
@@ -268,29 +269,74 @@ async def _fetch_url_bytes_for_upload(
         return None
 
 
+def _proxy_url() -> Optional[str]:
+    return (settings.HTTPS_PROXY or settings.HTTP_PROXY or "").strip() or None
+
+
+def _ytdlp_argv_prefix() -> Optional[list[str]]:
+    """PATH dagi yt-dlp yoki venv ichidagi python -m yt_dlp."""
+    exe = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe")
+    if exe:
+        return [exe]
+    try:
+        import yt_dlp  # noqa: F401
+    except ImportError:
+        return None
+    return [sys.executable, "-m", "yt_dlp"]
+
+
+async def _fetch_media_bytes_with_ig_fallback(
+    download_url: str,
+    *,
+    page_referer: str,
+    platform: Platform,
+) -> Optional[bytes]:
+    """CDN → (Instagram bo‘lsa) yt-dlp."""
+    raw = await _fetch_url_bytes_for_upload(download_url, page_referer=page_referer)
+    if raw:
+        return raw
+    if platform == Platform.INSTAGRAM:
+        logger.info("CDN 403 — yt-dlp bilan qayta urinilmoqda...")
+        return await _fetch_instagram_via_ytdlp(page_referer)
+    return None
+
+
 async def _fetch_instagram_via_ytdlp(page_url: str) -> Optional[bytes]:
     """
     Instagram CDN 403 bo‘lganda: `yt-dlp` orqali to‘g‘ridan-to‘g‘ri sahifa URL dan yuklash.
-    Serverda: pip install yt-dlp  (PATH da yt-dlp yoki yt-dlp.exe)
+    Serverda: pip install yt-dlp  (PATH yoki venv python -m yt_dlp)
     """
-    exe = shutil.which("yt-dlp") or shutil.which("yt-dlp.exe")
-    if not exe:
+    prefix = _ytdlp_argv_prefix()
+    if not prefix:
+        logger.warning("yt-dlp topilmadi — pip install yt-dlp")
         return None
 
+    proxy = _proxy_url()
     out_dir = tempfile.mkdtemp(prefix="ytdlp_ig_")
     try:
         out_tmpl = os.path.join(out_dir, "out.%(ext)s")
-        proc = await asyncio.create_subprocess_exec(
-            exe,
+        cmd = prefix + [
             "--no-warnings",
             "--no-playlist",
             "-f",
             "best[ext=mp4]/best[height<=720]/best",
             "-o",
             out_tmpl,
-            page_url,
+        ]
+        if proxy:
+            cmd.extend(["--proxy", proxy])
+        cmd.append(page_url)
+
+        sub_env = os.environ.copy()
+        if proxy:
+            sub_env["HTTPS_PROXY"] = proxy
+            sub_env["HTTP_PROXY"] = proxy
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=sub_env,
         )
         try:
             _, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
@@ -464,13 +510,11 @@ async def send_media_to_user(
                 "URLInputFile yuborish muvaffaqiyatsiz (%s); server orqali yuklab yuborilmoqda...",
                 first_err,
             )
-            raw = await _fetch_url_bytes_for_upload(
+            raw = await _fetch_media_bytes_with_ig_fallback(
                 download_url,
                 page_referer=original_url,
+                platform=platform,
             )
-            if not raw and platform == Platform.INSTAGRAM:
-                logger.info("CDN 403 — yt-dlp bilan qayta urinilmoqda...")
-                raw = await _fetch_instagram_via_ytdlp(original_url)
             if not raw:
                 raise
             if fetch_media_is_video(media_info.media_type):
@@ -577,9 +621,10 @@ async def send_carousel_media(
                     i + 1,
                     first_err,
                 )
-                raw = await _fetch_url_bytes_for_upload(
+                raw = await _fetch_media_bytes_with_ig_fallback(
                     item_url,
                     page_referer=original_url,
+                    platform=platform,
                 )
                 if not raw:
                     raise

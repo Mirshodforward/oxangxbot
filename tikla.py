@@ -30,7 +30,7 @@ if _root not in sys.path:
     sys.path.insert(0, _root)
 
 from app.config import settings
-from app.utils.pg_tools import db_params
+from app.utils.pg_tools import db_params, format_pg_auth_help, pg_env
 
 
 def _psql_base(cfg: dict[str, str | int]) -> list[str]:
@@ -86,6 +86,8 @@ def _database_exists(cfg: dict[str, str | int], env: dict[str, str]) -> bool:
     )
     if result.returncode != 0:
         err = (result.stderr or result.stdout or "").strip()
+        if "password authentication failed" in err.lower():
+            raise SystemExit(format_pg_auth_help(cfg))
         raise SystemExit(f"Bazani tekshirib bo'lmadi: {err}")
     return result.stdout.strip() == "1"
 
@@ -183,9 +185,7 @@ def run_restore(
     cfg = db_params(raw_url)
     db_name = str(cfg["database"])
 
-    env = os.environ.copy()
-    if cfg["password"]:
-        env["PGPASSWORD"] = str(cfg["password"])
+    env = pg_env(cfg)
 
     print(
         f"Maqsad: {cfg['user']}@{cfg['host']}:{cfg['port']}/{db_name}"
