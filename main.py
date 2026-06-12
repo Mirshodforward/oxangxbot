@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import logging
 import multiprocessing
 import sys
@@ -21,6 +22,24 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# Taronja subprocess — Ctrl+C / exit da to'xtatish uchun
+_taronja_proc: multiprocessing.Process | None = None
+
+
+def _stop_taronja_process(proc: multiprocessing.Process | None = None) -> None:
+    """Taronja alohida jarayonini to'xtatish (Ctrl+C yoki Oxang tugaganda)."""
+    p = proc if proc is not None else _taronja_proc
+    if p is None or not p.is_alive():
+        return
+    logger.info("Taronja jarayoni to'xtatilmoqda (pid=%s)...", p.pid)
+    p.terminate()
+    p.join(timeout=12)
+    if p.is_alive():
+        logger.warning("Taronja SIGKILL...")
+        p.kill()
+        p.join(timeout=5)
+    logger.info("Taronja to'xtatildi")
+
 
 async def _run_single_bot(token: str, *, taronja: bool, label: str) -> None:
     await init_db()
@@ -36,20 +55,26 @@ async def _run_single_bot(token: str, *, taronja: bool, label: str) -> None:
 async def _run_oxang_with_optional_taronja(
     taronja_process: multiprocessing.Process | None,
 ) -> None:
-    await _run_single_bot(
-        settings.BOT_TOKEN.strip(),
-        taronja=False,
-        label="oxang",
-    )
-    if taronja_process is not None:
-        if taronja_process.is_alive():
-            taronja_process.terminate()
-            taronja_process.join(timeout=15)
-        if taronja_process.is_alive():
-            taronja_process.kill()
+    try:
+        await _run_single_bot(
+            settings.BOT_TOKEN.strip(),
+            taronja=False,
+            label="oxang",
+        )
+    finally:
+        _stop_taronja_process(taronja_process)
+
+
+def _register_shutdown_hooks(taronja_process: multiprocessing.Process | None) -> None:
+    """Chiqishda (Ctrl+C ham) Taronja subprocess to'xtasin."""
+    if taronja_process is None:
+        return
+    atexit.register(_stop_taronja_process, taronja_process)
 
 
 def main() -> None:
+    global _taronja_proc
+
     mode = settings.BOT_RUN_MODE
     tar_tok = (settings.TARONJA_BOT_TOKEN or "").strip()
     tar_proc: multiprocessing.Process | None = None
@@ -62,7 +87,7 @@ def main() -> None:
         try:
             asyncio.run(_run_single_bot(tar_tok, taronja=True, label="taronja"))
         except KeyboardInterrupt:
-            logger.info("Bot stopped by user")
+            logger.info("Taronja to'xtatildi (Ctrl+C)")
         return
 
     if mode == "oxang":
@@ -70,7 +95,7 @@ def main() -> None:
         try:
             asyncio.run(_run_single_bot(settings.BOT_TOKEN.strip(), taronja=False, label="oxang"))
         except KeyboardInterrupt:
-            logger.info("Bot stopped by user")
+            logger.info("Oxang to'xtatildi (Ctrl+C)")
         return
 
     # both — Oxang asosiy jarayon + Taronja alohida subprocess
@@ -82,6 +107,8 @@ def main() -> None:
             name="oxangxbot-taronja",
         )
         tar_proc.start()
+        _taronja_proc = tar_proc
+        _register_shutdown_hooks(tar_proc)
         logger.info("Taronja alohida jarayonda ishga tushdi (pid=%s)", tar_proc.pid)
     else:
         logger.warning("TARONABOT_TOKEN yo'q — faqat Oxang ishlaydi")
@@ -89,16 +116,20 @@ def main() -> None:
     try:
         asyncio.run(_run_oxang_with_optional_taronja(tar_proc))
     except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-        if tar_proc is not None and tar_proc.is_alive():
-            tar_proc.terminate()
-            tar_proc.join(timeout=10)
+        logger.info("Ikkala bot to'xtatildi (Ctrl+C)")
+    finally:
+        _stop_taronja_process(tar_proc)
+        _taronja_proc = None
 
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     try:
         main()
+    except KeyboardInterrupt:
+        _stop_taronja_process()
+        logger.info("Chiqildi")
     except Exception as e:
+        _stop_taronja_process()
         logger.error(f"Fatal error: {e}")
         sys.exit(1)
