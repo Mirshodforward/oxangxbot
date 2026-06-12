@@ -678,52 +678,12 @@ async def handle_url(message: Message, bot: Bot, session: AsyncSession, db_user:
         media_info = await api.get_media_info(url)
         
         if media_info.error:
-            # Instagram uchun: FastSaver API yiqilsa — yt-dlp bilan to'g'ridan-to'g'ri yuklash
-            if platform == Platform.INSTAGRAM:
-                try:
-                    await status_msg.edit_text("⏳ yt-dlp bilan urinilmoqda...")
-                except Exception:
-                    pass
-                raw = await _fetch_instagram_via_ytdlp(url)
-                if raw:
-                    lang = normalize_language_code(db_user.language_code)
-                    try:
-                        bot_me = await bot.get_me()
-                        bot_username = bot_me.username
-                    except Exception:
-                        bot_username = "Oxangxbot"
-                    caption_text = _download_reply_caption(lang, bot_username)
-                    keyboard = get_download_keyboard(lang, is_video=True)
-                    try:
-                        await status_msg.delete()
-                    except Exception:
-                        pass
-                    sent_msg = await message.answer_video(
-                        video=BufferedInputFile(raw, filename="video.mp4"),
-                        caption=caption_text,
-                        reply_markup=keyboard,
-                        parse_mode="HTML",
-                    )
-                    download_repo = DownloadRepository(session)
-                    user_repo = UserRepository(session)
-                    file_id = sent_msg.video.file_id if sent_msg and sent_msg.video else None
-                    await download_repo.create(
-                        user_id=db_user.id,
-                        url=url,
-                        platform=platform,
-                        shortcode=None,
-                        media_type=MediaType.VIDEO,
-                        file_id=file_id,
-                        is_success=True,
-                    )
-                    await user_repo.increment_downloads(db_user.id)
-                    return
             try:
                 await status_msg.delete()
             except Exception:
                 pass
             await message.answer(
-                f"❌ Xatolik: {media_info.error_message or 'Media topilmadi'}"
+                f"❌ {media_info.error_message or 'Media topilmadi'}"
             )
             return
         
