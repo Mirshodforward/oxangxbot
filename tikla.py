@@ -217,7 +217,7 @@ def run_restore(
         env.pop("PGPASSWORD", None)
 
     print("Tayyor: baza tiklandi.")
-    print("Botni ishga tushiring: python main.py")
+    print("Botni ishga tushiring: python main.py  (yoki Taronja: python main2.py)")
 
 
 def main() -> None:

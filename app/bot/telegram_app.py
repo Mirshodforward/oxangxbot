@@ -1,5 +1,5 @@
 """
-Bitta bot polling: router/middleware sozlash (main.py va multiprocessing worker uchun).
+Bitta bot polling: router/middleware sozlash (main.py / main2.py).
 """
 import logging
 

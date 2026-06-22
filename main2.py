@@ -12,7 +12,7 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler("bot.log", encoding="utf-8"),
+        logging.FileHandler("bot_taronja.log", encoding="utf-8"),
     ],
 )
 
@@ -20,26 +20,27 @@ logger = logging.getLogger(__name__)
 
 
 async def _run() -> None:
+    token = (settings.TARONJA_BOT_TOKEN or "").strip()
+    if not token:
+        logger.error("TARONABOT_TOKEN .env da topilmadi")
+        sys.exit(1)
+
     await init_db()
-    logger.info("Database initialized [oxang]")
+    logger.info("Database initialized [taronja]")
     try:
-        await run_bot_instance(
-            settings.BOT_TOKEN.strip(),
-            taronja=False,
-            label="oxang",
-        )
+        await run_bot_instance(token, taronja=True, label="taronja")
     finally:
         await api.close()
         await close_db()
-        logger.info("Cleanup complete [oxang]")
+        logger.info("Cleanup complete [taronja]")
 
 
 def main() -> None:
-    logger.info("Oxang bot ishga tushmoqda (BOT_TOKEN)")
+    logger.info("Taronja bot ishga tushmoqda (TARONABOT_TOKEN)")
     try:
         asyncio.run(_run())
     except KeyboardInterrupt:
-        logger.info("Oxang to'xtatildi (Ctrl+C)")
+        logger.info("Taronja to'xtatildi (Ctrl+C)")
 
 
 if __name__ == "__main__":
